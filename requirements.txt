@@ -5,3 +5,11 @@ uvicorn[standard]
 gtts
 jdatetime
 requests
+fastapi
+gtts
+jdatetime
+pydantic
+python-dotenv
+requests
+telethon
+uvicorn[standard]

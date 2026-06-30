@@ -32,7 +32,7 @@ async def main():
     await mgr.load()
 
     print(f"\n✅ {len(mgr.accs)} حساب متصل")
-    print(f"🌐 داشبورد: http://0.0.0.0:8080")
+    print(f"🌐 داشبورد: http://0.0.0.0:5000")
     print(f"   توی تلگرام بنویس: .راهنما\n")
 
     await web.start()
