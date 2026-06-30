@@ -54,6 +54,7 @@
     <h1>🤖 Telegram Userbot Dashboard</h1>
     <span id="hdr-count">Loading...</span>
   </div>
+  <button class="btn-secondary" id="github-btn" onclick="pushToGithub()" style="margin-left:auto;">⬆ Push to GitHub</button>
 </header>
 <div class="container">
 
@@ -323,6 +324,20 @@ async function verifyCode() {
   } else {
     msg.innerHTML = '<div class="msg msg-err">' + (data.detail || 'Error') + '</div>';
   }
+}
+
+async function pushToGithub() {
+  const btn = document.getElementById('github-btn');
+  btn.textContent = '⏳ Pushing...';
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/git/push', {method:'POST'});
+    const data = await res.json();
+    if (data.ok) { toast('✅ Pushed to GitHub!'); }
+    else { toast('❌ ' + (data.detail || 'Push failed'), false); }
+  } catch(e) { toast('❌ ' + e, false); }
+  btn.textContent = '⬆ Push to GitHub';
+  btn.disabled = false;
 }
 
 // Init

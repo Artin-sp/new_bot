@@ -108,6 +108,32 @@ async def del_click(cid: int):
     c = db.conn(); c.execute("UPDATE click_rules SET active=0 WHERE id=?",(cid,))
     c.commit(); c.close(); return {"ok": True}
 
+# ── GitHub push ────────────────────────────────────────────────────
+@app.post("/api/git/push")
+async def git_push():
+    token = os.getenv("GITHUB_TOKEN", "")
+    if not token:
+        raise HTTPException(400, "GITHUB_TOKEN secret is not set")
+    def _push():
+        remote_url = f"https://{token}@github.com/Artin-sp/new_bot.git"
+        cmds = [
+            ["git", "config", "user.email", "bot@replit.com"],
+            ["git", "config", "user.name", "Replit Bot"],
+            ["git", "add", "-A"],
+            ["git", "commit", "-m", "Auto-push from dashboard", "--allow-empty"],
+            ["git", "push", remote_url, "HEAD:main", "--force"],
+        ]
+        log = []
+        for cmd in cmds:
+            r = subprocess.run(cmd, capture_output=True, text=True, cwd="/home/runner/workspace")
+            log.append((r.stdout + r.stderr).strip())
+        return "\n".join(l for l in log if l)
+    try:
+        out = await asyncio.get_event_loop().run_in_executor(None, _push)
+        return {"ok": True, "log": out}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
 async def start():
     config = uvicorn.Config(app, host="0.0.0.0", port=5000, log_level="warning")
     await uvicorn.Server(config).serve()
