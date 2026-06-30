@@ -247,20 +247,21 @@ def register(client, acc, manager):
     # ── ویس (TTS) / voice ────────────────────────────────────────
     async def _do_tts(target_event, text):
         await target_event.delete()
-        fd = tmp = None
+        tmp = None
         try:
             from gtts import gTTS
             lang = "fa" if any('\u0600' <= ch <= '\u06FF' for ch in text) else "en"
-            fd, tmp = tempfile.mkstemp(suffix=".mp3")
-            os.close(fd); fd = None
-            gTTS(text=text, lang=lang).save(tmp)
+            def _gen():
+                import tempfile as _tf
+                fd, path = _tf.mkstemp(suffix=".mp3")
+                os.close(fd)
+                gTTS(text=text, lang=lang, slow=False).save(path)
+                return path
+            tmp = await asyncio.get_event_loop().run_in_executor(None, _gen)
             await client.send_file(target_event.chat_id, tmp, voice_note=True, caption="")
         except Exception as e:
             await client.send_message("me", f"❌ ویس: {e}")
         finally:
-            if fd is not None:
-                try: os.close(fd)
-                except: pass
             if tmp and os.path.exists(tmp):
                 try: os.unlink(tmp)
                 except: pass
@@ -292,29 +293,36 @@ def register(client, acc, manager):
         reply = await event.get_reply_message()
         if not (reply.voice or reply.audio):
             await client.send_message("me", "❌ پیامی که ریپلای کردی صوتی نیست"); return
-        key = os.getenv("OPENAI_API_KEY", "")
+        key = os.getenv("GEMINI_API_KEY", "")
         if not key:
             await client.send_message("me",
-                "❌ **این قابلیت نیاز به API Key داره**\n\n"
-                "توی Replit → Secrets این رو اضافه کن:\n"
-                "کلید: `OPENAI_API_KEY`\nمقدار: کلیدت از platform.openai.com")
+                "❌ **این قابلیت نیاز به GEMINI_API_KEY داره**\n\n"
+                "توی Replit → Secrets اضافه کن:\nکلید: `GEMINI_API_KEY`\n"
+                "مقدار: کلیدت از aistudio.google.com")
             return
         tmp = None
         try:
+            import requests as _req, base64, mimetypes
             tmp = await client.download_media(reply, file=tempfile.mktemp(suffix=".ogg"))
-            import requests
 
-            def _upload():
+            def _transcribe():
                 with open(tmp, "rb") as f:
-                    r = requests.post(
-                        "https://api.openai.com/v1/audio/transcriptions",
-                        headers={"Authorization": f"Bearer {key}"},
-                        files={"file": f}, data={"model": "whisper-1"}, timeout=60)
+                    audio_b64 = base64.b64encode(f.read()).decode()
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
+                body = {
+                    "contents": [{
+                        "parts": [
+                            {"text": "Transcribe this audio exactly as spoken. Return only the transcribed text, no explanations."},
+                            {"inline_data": {"mime_type": "audio/ogg", "data": audio_b64}}
+                        ]
+                    }]
+                }
+                r = _req.post(url, json=body, timeout=60)
                 r.raise_for_status()
                 return r.json()
 
-            res  = await asyncio.get_event_loop().run_in_executor(None, _upload)
-            text = (res.get("text") or "").strip()
+            res  = await asyncio.get_event_loop().run_in_executor(None, _transcribe)
+            text = res["candidates"][0]["content"]["parts"][0]["text"].strip()
             await client.send_message(event.chat_id, f"📝 {text}" if text else "متنی پیدا نشد")
         except Exception as e:
             await client.send_message("me", f"❌ تبدیل به متن: {e}")
@@ -336,15 +344,19 @@ def register(client, acc, manager):
                 "مقدار: کلیدت از aistudio.google.com")
             return
         try:
-            import requests as _req, json
+            import requests as _req
             def _call_gemini():
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}"
-                body = {
-                    "contents": [{"parts": [{"text": "You are a helpful assistant. Always reply in the same language the user writes in. Be concise.\n\n" + question}]}]
-                }
-                r = _req.post(url, json=body, timeout=30)
-                r.raise_for_status()
-                return r.json()
+                for model in ("gemini-1.5-flash", "gemini-2.0-flash"):
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+                    body = {"contents": [{"parts": [{"text":
+                        "You are a helpful assistant. Always reply in the same language the user writes in. Be concise.\n\n"
+                        + question}]}]}
+                    r = _req.post(url, json=body, timeout=30)
+                    if r.status_code == 429:
+                        continue
+                    r.raise_for_status()
+                    return r.json()
+                raise Exception("محدودیت درخواست Gemini — چند دقیقه دیگه دوباره امتحان کن")
             res    = await asyncio.get_event_loop().run_in_executor(None, _call_gemini)
             answer = res["candidates"][0]["content"]["parts"][0]["text"].strip()
             await client.send_message(event.chat_id, f"🤖 {answer}")
