@@ -1,6 +1,11 @@
-import asyncio, os
+import asyncio, os, glob
 from dotenv import load_dotenv
 load_dotenv()
+
+# Clean up stale SQLite journal files that cause "database is locked" on restart
+for _j in glob.glob("sessions/*.session-journal"):
+    try: os.remove(_j)
+    except: pass
 
 import db
 from manager import Manager
