@@ -1,0 +1,7 @@
+telethon
+python-dotenv
+fastapi
+uvicorn[standard]
+gtts
+jdatetime
+requests
