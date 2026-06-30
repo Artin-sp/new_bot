@@ -336,17 +336,16 @@ def register(client, acc, manager):
                 "مقدار: کلیدت از aistudio.google.com")
             return
         try:
-            import urllib.request, json
-            body = json.dumps({
-                "contents": [
-                    {"parts": [
-                        {"text": "You are a helpful assistant. Always reply in the same language the user writes in. Be concise.\n\n" + question}
-                    ]}
-                ]
-            }).encode()
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}"
-            req = urllib.request.Request(url, body, {"Content-Type": "application/json"})
-            res    = json.loads(urllib.request.urlopen(req, timeout=30).read())
+            import requests as _req, json
+            def _call_gemini():
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}"
+                body = {
+                    "contents": [{"parts": [{"text": "You are a helpful assistant. Always reply in the same language the user writes in. Be concise.\n\n" + question}]}]
+                }
+                r = _req.post(url, json=body, timeout=30)
+                r.raise_for_status()
+                return r.json()
+            res    = await asyncio.get_event_loop().run_in_executor(None, _call_gemini)
             answer = res["candidates"][0]["content"]["parts"][0]["text"].strip()
             await client.send_message(event.chat_id, f"🤖 {answer}")
         except Exception as e:
