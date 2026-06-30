@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Telegram Userbot Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; min-height: 100vh; }
+  header { background: #161b22; border-bottom: 1px solid #30363d; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 1.2rem; color: #58a6ff; }
+  header span { font-size: 0.85rem; color: #8b949e; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+  .section { margin-bottom: 32px; }
+  .section-title { font-size: 1rem; font-weight: 600; color: #e6edf3; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+  .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .badge { font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; font-weight: 500; }
+  .badge-green { background: #1a4731; color: #56d364; }
+  .badge-red { background: #3d1a1a; color: #f85149; }
+  .badge-gray { background: #21262d; color: #8b949e; }
+  .meta { font-size: 0.8rem; color: #8b949e; margin-top: 4px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  button { cursor: pointer; border: none; border-radius: 6px; padding: 6px 14px; font-size: 0.82rem; font-weight: 500; transition: opacity .15s; }
+  button:hover { opacity: 0.8; }
+  .btn-danger { background: #da3633; color: #fff; }
+  .btn-primary { background: #238636; color: #fff; }
+  .btn-secondary { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+  .login-box { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; max-width: 420px; }
+  .login-box h2 { font-size: 1rem; margin-bottom: 16px; color: #e6edf3; }
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display: block; font-size: 0.82rem; color: #8b949e; margin-bottom: 4px; }
+  .form-group input { width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 8px 10px; color: #c9d1d9; font-size: 0.9rem; outline: none; }
+  .form-group input:focus { border-color: #58a6ff; }
+  .msg { font-size: 0.82rem; margin-top: 8px; padding: 6px 10px; border-radius: 4px; }
+  .msg-ok { background: #1a4731; color: #56d364; }
+  .msg-err { background: #3d1a1a; color: #f85149; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .stat { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 16px; }
+  .stat-num { font-size: 1.6rem; font-weight: 700; color: #58a6ff; }
+  .stat-label { font-size: 0.78rem; color: #8b949e; margin-top: 2px; }
+  .empty { color: #484f58; font-size: 0.88rem; padding: 20px 0; text-align: center; }
+  #toast { position: fixed; bottom: 24px; right: 24px; background: #238636; color: #fff; padding: 10px 18px; border-radius: 6px; font-size: 0.85rem; display: none; z-index: 99; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid #30363d; }
+  .tab { padding: 8px 16px; font-size: 0.88rem; cursor: pointer; border-bottom: 2px solid transparent; color: #8b949e; background: none; border-radius: 0; }
+  .tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>🤖 Telegram Userbot Dashboard</h1>
+    <span id="hdr-count">Loading...</span>
+  </div>
+</header>
+<div class="container">
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('accounts')">Accounts</button>
+    <button class="tab" onclick="switchTab('tasks')">Scheduled Sends</button>
+    <button class="tab" onclick="switchTab('banners')">Banners</button>
+    <button class="tab" onclick="switchTab('replies')">Auto-Replies</button>
+    <button class="tab" onclick="switchTab('clicks')">Auto-Clicker</button>
+    <button class="tab" onclick="switchTab('add')">Add Account</button>
+  </div>
+
+  <!-- Accounts Tab -->
+  <div class="tab-content active" id="tab-accounts">
+    <div class="section">
+      <div class="section-title">📱 Connected Accounts</div>
+      <div id="accounts-list"><div class="empty">Loading...</div></div>
+      <div class="grid" id="stats-grid" style="margin-top:16px;"></div>
+    </div>
+  </div>
+
+  <!-- Tasks Tab -->
+  <div class="tab-content" id="tab-tasks">
+    <div class="section">
+      <div class="section-title">📨 Scheduled Text Sends</div>
+      <div id="tasks-list"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- Banners Tab -->
+  <div class="tab-content" id="tab-banners">
+    <div class="section">
+      <div class="section-title">📢 Active Banners</div>
+      <div id="banners-list"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- Auto-replies Tab -->
+  <div class="tab-content" id="tab-replies">
+    <div class="section">
+      <div class="section-title">💬 Auto-Reply Rules</div>
+      <div id="replies-list"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- Auto-clicker Tab -->
+  <div class="tab-content" id="tab-clicks">
+    <div class="section">
+      <div class="section-title">🖱️ Auto-Clicker Rules</div>
+      <div id="clicks-list"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- Add Account Tab -->
+  <div class="tab-content" id="tab-add">
+    <div class="section">
+      <div class="login-box">
+        <h2>➕ Add Telegram Account</h2>
+        <div id="login-step1">
+          <div class="form-group">
+            <label>Phone Number (with country code)</label>
+            <input type="tel" id="inp-phone" placeholder="+989123456789">
+          </div>
+          <button class="btn-primary" onclick="sendCode()">Send Verification Code</button>
+          <div id="msg1"></div>
+        </div>
+        <div id="login-step2" style="display:none;">
+          <div class="form-group">
+            <label>Verification Code</label>
+            <input type="text" id="inp-code" placeholder="12345">
+          </div>
+          <div class="form-group">
+            <label>2FA Password (leave empty if none)</label>
+            <input type="password" id="inp-pw" placeholder="optional">
+          </div>
+          <button class="btn-primary" onclick="verifyCode()">Verify & Connect</button>
+          <div id="msg2"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+<div id="toast"></div>
+
+<script>
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    const tabs = ['accounts','tasks','banners','replies','clicks','add'];
+    t.classList.toggle('active', tabs[i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'accounts') loadAccounts();
+  if (name === 'tasks') loadTasks();
+  if (name === 'banners') loadBanners();
+  if (name === 'replies') loadReplies();
+  if (name === 'clicks') loadClicks();
+}
+
+function toast(msg, ok=true) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.background = ok ? '#238636' : '#da3633';
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 2500);
+}
+
+function fmtSecs(s) {
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s/60) + 'm';
+  return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
+}
+
+async function loadAccounts() {
+  const res = await fetch('/api/accounts');
+  const accs = await res.json();
+  const el = document.getElementById('accounts-list');
+  const stats = document.getElementById('stats-grid');
+  if (!accs.length) { el.innerHTML = '<div class="empty">No accounts connected yet. Go to "Add Account" tab.</div>'; stats.innerHTML=''; return; }
+  let connected = accs.filter(a=>a.connected).length;
+  document.getElementById('hdr-count').textContent = connected + ' connected / ' + accs.length + ' total';
+  el.innerHTML = accs.map(a => `
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <strong>${a.name || a.phone}</strong>
+          ${a.username ? '<span style="color:#8b949e"> @'+a.username+'</span>' : ''}
+          &nbsp;
+          <span class="badge ${a.connected ? 'badge-green' : 'badge-red'}">${a.connected ? '● Connected' : '○ Disconnected'}</span>
+        </div>
+        <button class="btn-danger" onclick="removeAcc('${a.phone}')">Remove</button>
+      </div>
+      <div class="meta">${a.phone} &nbsp;·&nbsp; ${a.banners} banners &nbsp;·&nbsp; ${a.replies} auto-replies &nbsp;·&nbsp; ${a.sends} scheduled sends</div>
+    </div>
+  `).join('');
+  stats.innerHTML = `
+    <div class="stat"><div class="stat-num">${accs.length}</div><div class="stat-label">Total Accounts</div></div>
+    <div class="stat"><div class="stat-num">${connected}</div><div class="stat-label">Connected</div></div>
+    <div class="stat"><div class="stat-num">${accs.reduce((s,a)=>s+a.banners,0)}</div><div class="stat-label">Active Banners</div></div>
+    <div class="stat"><div class="stat-num">${accs.reduce((s,a)=>s+a.replies,0)}</div><div class="stat-label">Auto-Reply Rules</div></div>
+    <div class="stat"><div class="stat-num">${accs.reduce((s,a)=>s+a.sends,0)}</div><div class="stat-label">Scheduled Sends</div></div>
+  `;
+}
+
+async function removeAcc(phone) {
+  if (!confirm('Remove account ' + phone + '?')) return;
+  await fetch('/api/accounts/' + phone.replace('+','-'), {method:'DELETE'});
+  toast('Account removed'); loadAccounts();
+}
+
+async function loadTasks() {
+  const res = await fetch('/api/tasks');
+  const tasks = await res.json();
+  const el = document.getElementById('tasks-list');
+  if (!tasks.length) { el.innerHTML = '<div class="empty">No scheduled sends active.</div>'; return; }
+  el.innerHTML = tasks.map(t => `
+    <div class="card">
+      <div class="card-header">
+        <div><strong>${t.name || t.phone}</strong> → Chat <code>${t.chat_id}</code></div>
+        <button class="btn-danger" onclick="stopTask('${t.phone}','${t.chat_id}')">Stop</button>
+      </div>
+      <div class="meta">Interval: ${fmtSecs(t.interval_sec)}</div>
+      <div style="margin-top:8px;font-size:0.85rem;color:#c9d1d9;white-space:pre-wrap;">${t.message}</div>
+    </div>
+  `).join('');
+}
+
+async function stopTask(phone, chat_id) {
+  await fetch('/api/tasks/' + phone.replace('+','-') + '/' + chat_id, {method:'DELETE'});
+  toast('Task stopped'); loadTasks();
+}
+
+async function loadBanners() {
+  const res = await fetch('/api/banners');
+  const banners = await res.json();
+  const el = document.getElementById('banners-list');
+  if (!banners.length) { el.innerHTML = '<div class="empty">No active banners.</div>'; return; }
+  el.innerHTML = banners.map(b => `
+    <div class="card">
+      <div class="card-header">
+        <div><strong>${b.phone}</strong> → Chat <code>${b.chat_id}</code></div>
+        <button class="btn-danger" onclick="delBanner(${b.id})">Stop</button>
+      </div>
+      <div class="meta">Source: ${b.source_chat} · Msg ID: ${b.msg_id} · Interval: ${fmtSecs(b.interval_sec)} · Mode: ${b.mode}</div>
+    </div>
+  `).join('');
+}
+
+async function delBanner(bid) {
+  await fetch('/api/banners/' + bid, {method:'DELETE'});
+  toast('Banner stopped'); loadBanners();
+}
+
+async function loadReplies() {
+  const res = await fetch('/api/replies');
+  const replies = await res.json();
+  const el = document.getElementById('replies-list');
+  if (!replies.length) { el.innerHTML = '<div class="empty">No auto-reply rules.</div>'; return; }
+  el.innerHTML = replies.map(r => `
+    <div class="card">
+      <div class="card-header">
+        <div><strong>${r.phone}</strong> &nbsp; keyword: <code>${r.keyword}</code></div>
+        <button class="btn-danger" onclick="delReply(${r.id})">Delete</button>
+      </div>
+      <div class="meta">Reply: ${r.reply} &nbsp;·&nbsp; <span class="badge ${r.enabled ? 'badge-green' : 'badge-gray'}">${r.enabled ? 'Enabled' : 'Disabled'}</span></div>
+    </div>
+  `).join('');
+}
+
+async function delReply(rid) {
+  await fetch('/api/replies/' + rid, {method:'DELETE'});
+  toast('Reply rule deleted'); loadReplies();
+}
+
+async function loadClicks() {
+  const res = await fetch('/api/clicks');
+  const clicks = await res.json();
+  const el = document.getElementById('clicks-list');
+  if (!clicks.length) { el.innerHTML = '<div class="empty">No auto-clicker rules.</div>'; return; }
+  el.innerHTML = clicks.map(c => `
+    <div class="card">
+      <div class="card-header">
+        <div><strong>${c.phone}</strong> → @${c.bot_username}</div>
+        <button class="btn-danger" onclick="delClick(${c.id})">Delete</button>
+      </div>
+      <div class="meta">Pattern: <code>${c.pattern}</code> · Delay: ${c.delay_sec}s · Remaining: ${c.remaining < 0 ? '∞' : c.remaining}</div>
+    </div>
+  `).join('');
+}
+
+async function delClick(cid) {
+  await fetch('/api/clicks/' + cid, {method:'DELETE'});
+  toast('Clicker rule deleted'); loadClicks();
+}
+
+// Login flow
+async function sendCode() {
+  const phone = document.getElementById('inp-phone').value.trim();
+  const msg = document.getElementById('msg1');
+  if (!phone) { msg.innerHTML = '<div class="msg msg-err">Enter phone number</div>'; return; }
+  msg.innerHTML = '<div class="msg">Sending code...</div>';
+  const res = await fetch('/api/login/code', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({phone})});
+  const data = await res.json();
+  if (data.ok) {
+    msg.innerHTML = '<div class="msg msg-ok">Code sent!</div>';
+    document.getElementById('login-step1').style.display = 'none';
+    document.getElementById('login-step2').style.display = 'block';
+  } else {
+    msg.innerHTML = '<div class="msg msg-err">' + (data.detail || 'Error') + '</div>';
+  }
+}
+
+async function verifyCode() {
+  const phone = document.getElementById('inp-phone').value.trim();
+  const code = document.getElementById('inp-code').value.trim();
+  const pw = document.getElementById('inp-pw').value;
+  const msg = document.getElementById('msg2');
+  msg.innerHTML = '<div class="msg">Verifying...</div>';
+  const res = await fetch('/api/login/verify', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({phone, code, pw})});
+  const data = await res.json();
+  if (data.ok) {
+    msg.innerHTML = '<div class="msg msg-ok">Connected as ' + data.name + '!</div>';
+    setTimeout(() => { switchTab('accounts'); }, 1500);
+  } else if (data.need2fa) {
+    msg.innerHTML = '<div class="msg msg-err">2FA required — enter password above and try again.</div>';
+  } else {
+    msg.innerHTML = '<div class="msg msg-err">' + (data.detail || 'Error') + '</div>';
+  }
+}
+
+// Init
+loadAccounts();
+setInterval(loadAccounts, 15000);
+</script>
+</body>
+</html>

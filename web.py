@@ -109,5 +109,5 @@ async def del_click(cid: int):
     c.commit(); c.close(); return {"ok": True}
 
 async def start():
-    config = uvicorn.Config(app, host="0.0.0.0", port=8080, log_level="warning")
+    config = uvicorn.Config(app, host="0.0.0.0", port=5000, log_level="warning")
     await uvicorn.Server(config).serve()
