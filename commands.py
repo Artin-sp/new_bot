@@ -328,29 +328,26 @@ def register(client, acc, manager):
     async def _ai(event):
         question = event.pattern_match.group(1).strip()
         await event.delete()
-        key = os.getenv("OPENAI_API_KEY", "")
+        key = os.getenv("GEMINI_API_KEY", "")
         if not key:
             await client.send_message("me",
                 "❌ **هوش مصنوعی نیاز به API Key داره**\n\n"
-                "توی Replit → Secrets اضافه کن:\nکلید: `OPENAI_API_KEY`\n"
-                "مقدار: کلیدت از platform.openai.com")
+                "توی Replit → Secrets اضافه کن:\nکلید: `GEMINI_API_KEY`\n"
+                "مقدار: کلیدت از aistudio.google.com")
             return
         try:
             import urllib.request, json
             body = json.dumps({
-                "model": "gpt-3.5-turbo",
-                "messages": [
-                    {"role": "system",
-                     "content": "You are a helpful assistant. Always reply in the same language the user writes in. Be concise."},
-                    {"role": "user", "content": question}
-                ],
-                "max_tokens": 800
+                "contents": [
+                    {"parts": [
+                        {"text": "You are a helpful assistant. Always reply in the same language the user writes in. Be concise.\n\n" + question}
+                    ]}
+                ]
             }).encode()
-            req = urllib.request.Request(
-                "https://api.openai.com/v1/chat/completions", body,
-                {"Content-Type": "application/json", "Authorization": f"Bearer {key}"})
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}"
+            req = urllib.request.Request(url, body, {"Content-Type": "application/json"})
             res    = json.loads(urllib.request.urlopen(req, timeout=30).read())
-            answer = res["choices"][0]["message"]["content"].strip()
+            answer = res["candidates"][0]["content"]["parts"][0]["text"].strip()
             await client.send_message(event.chat_id, f"🤖 {answer}")
         except Exception as e:
             await client.send_message("me", f"❌ هوش مصنوعی: {e}")
