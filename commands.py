@@ -293,36 +293,30 @@ def register(client, acc, manager):
         reply = await event.get_reply_message()
         if not (reply.voice or reply.audio):
             await client.send_message("me", "❌ پیامی که ریپلای کردی صوتی نیست"); return
-        key = os.getenv("GEMINI_API_KEY", "")
+        key = os.getenv("GROQ_API_KEY", "")
         if not key:
             await client.send_message("me",
-                "❌ **این قابلیت نیاز به GEMINI_API_KEY داره**\n\n"
-                "توی Replit → Secrets اضافه کن:\nکلید: `GEMINI_API_KEY`\n"
-                "مقدار: کلیدت از aistudio.google.com")
+                "❌ **این قابلیت نیاز به GROQ_API_KEY داره**\n\n"
+                "توی Replit → Secrets اضافه کن:\nکلید: `GROQ_API_KEY`\n"
+                "مقدار: کلید رایگان از console.groq.com")
             return
         tmp = None
         try:
-            import requests as _req, base64, mimetypes
+            import requests as _req
             tmp = await client.download_media(reply, file=tempfile.mktemp(suffix=".ogg"))
 
             def _transcribe():
                 with open(tmp, "rb") as f:
-                    audio_b64 = base64.b64encode(f.read()).decode()
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
-                body = {
-                    "contents": [{
-                        "parts": [
-                            {"text": "Transcribe this audio exactly as spoken. Return only the transcribed text, no explanations."},
-                            {"inline_data": {"mime_type": "audio/ogg", "data": audio_b64}}
-                        ]
-                    }]
-                }
-                r = _req.post(url, json=body, timeout=60)
+                    r = _req.post(
+                        "https://api.groq.com/openai/v1/audio/transcriptions",
+                        headers={"Authorization": f"Bearer {key}"},
+                        files={"file": ("audio.ogg", f, "audio/ogg")},
+                        data={"model": "whisper-large-v3", "language": "fa", "response_format": "text"},
+                        timeout=60)
                 r.raise_for_status()
-                return r.json()
+                return r.text.strip()
 
-            res  = await asyncio.get_event_loop().run_in_executor(None, _transcribe)
-            text = res["candidates"][0]["content"]["parts"][0]["text"].strip()
+            text = await asyncio.get_event_loop().run_in_executor(None, _transcribe)
             await client.send_message(event.chat_id, f"📝 {text}" if text else "متنی پیدا نشد")
         except Exception as e:
             await client.send_message("me", f"❌ تبدیل به متن: {e}")
@@ -336,29 +330,31 @@ def register(client, acc, manager):
     async def _ai(event):
         question = event.pattern_match.group(1).strip()
         await event.delete()
-        key = os.getenv("GEMINI_API_KEY", "")
+        key = os.getenv("GROQ_API_KEY", "")
         if not key:
             await client.send_message("me",
                 "❌ **هوش مصنوعی نیاز به API Key داره**\n\n"
-                "توی Replit → Secrets اضافه کن:\nکلید: `GEMINI_API_KEY`\n"
-                "مقدار: کلیدت از aistudio.google.com")
+                "توی Replit → Secrets اضافه کن:\nکلید: `GROQ_API_KEY`\n"
+                "مقدار: کلید رایگان از console.groq.com")
             return
         try:
             import requests as _req
-            def _call_gemini():
-                for model in ("gemini-1.5-flash", "gemini-2.0-flash"):
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-                    body = {"contents": [{"parts": [{"text":
-                        "You are a helpful assistant. Always reply in the same language the user writes in. Be concise.\n\n"
-                        + question}]}]}
-                    r = _req.post(url, json=body, timeout=30)
-                    if r.status_code == 429:
-                        continue
-                    r.raise_for_status()
-                    return r.json()
-                raise Exception("محدودیت درخواست Gemini — چند دقیقه دیگه دوباره امتحان کن")
-            res    = await asyncio.get_event_loop().run_in_executor(None, _call_gemini)
-            answer = res["candidates"][0]["content"]["parts"][0]["text"].strip()
+            def _call_groq():
+                r = _req.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    json={
+                        "model": "llama-3.3-70b-versatile",
+                        "messages": [
+                            {"role": "system", "content": "You are a helpful assistant. Always reply in the same language the user writes in. Be concise."},
+                            {"role": "user", "content": question}
+                        ],
+                        "max_tokens": 1024
+                    }, timeout=30)
+                r.raise_for_status()
+                return r.json()
+            res    = await asyncio.get_event_loop().run_in_executor(None, _call_groq)
+            answer = res["choices"][0]["message"]["content"].strip()
             await client.send_message(event.chat_id, f"🤖 {answer}")
         except Exception as e:
             await client.send_message("me", f"❌ هوش مصنوعی: {e}")
