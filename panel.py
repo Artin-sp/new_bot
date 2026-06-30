@@ -144,25 +144,27 @@ def _sub_fmt(phone):
 
 
 def _sub_tts(phone):
+    has_key = bool(os.getenv("GROQ_API_KEY", ""))
     txt = (
         "» ویس و تبدیل به متن\n\n"
         "`.ویس [متن]`  /  `.voice`  ← متن به ویس\n"
         "(زبان فارسی/انگلیسی خودکار تشخیص داده میشه)\n\n"
         "`.ویس` (ریپلای روی پیام متنی)  ← همون پیام رو ویس میکنه\n\n"
-        "`.متن` / `.totext` (ریپلای روی ویس)  ← ویس رو متن میکنه\n"
-        f"وضعیت تبدیل به متن: {'✅ فعال' if os.getenv('OPENAI_API_KEY') else '❌ نیاز به OPENAI_API_KEY'}"
+        "`.متن` / `.totext` (ریپلای روی ویس)  ← ویس رو متن میکنه (Groq Whisper)\n"
+        f"وضعیت تبدیل به متن: {'✅ فعال' if has_key else '❌ نیاز به GROQ_API_KEY'}"
     )
     return txt, [[_b("» بازگشت", "menu", phone)]]
 
 
 def _sub_ai(phone):
-    has_key = bool(os.getenv("OPENAI_API_KEY", ""))
-    status  = "✅ فعال" if has_key else "❌ نیاز به API Key"
+    has_key = bool(os.getenv("GROQ_API_KEY", ""))
+    status  = "✅ فعال (Llama 3.3 70B)" if has_key else "❌ نیاز به API Key"
     txt = (
         f"» هوش مصنوعی — {status}\n\n"
         "`.هوش [سوال]`  /  `.ai`\n\n"
+        "مدل: Llama 3.3 70B (Groq — رایگان و سریع)\n\n"
         "برای فعال‌سازی، توی Replit → Secrets اضافه کن:\n"
-        "کلید: OPENAI_API_KEY\nمقدار: کلیدت از platform.openai.com"
+        "کلید: GROQ_API_KEY\nمقدار: کلید رایگان از console.groq.com"
     )
     return txt, [[_b("» بازگشت", "menu", phone)]]
 
