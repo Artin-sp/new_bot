@@ -13,3 +13,4 @@ python-dotenv
 requests
 telethon
 uvicorn[standard]
+edge-tts
