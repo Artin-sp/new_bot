@@ -41,11 +41,18 @@
   .stat-label { font-size: 0.78rem; color: #8b949e; margin-top: 2px; }
   .empty { color: #484f58; font-size: 0.88rem; padding: 20px 0; text-align: center; }
   #toast { position: fixed; bottom: 24px; right: 24px; background: #238636; color: #fff; padding: 10px 18px; border-radius: 6px; font-size: 0.85rem; display: none; z-index: 99; }
-  .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid #30363d; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 0; border-bottom: 1px solid #30363d; flex-wrap:wrap; }
   .tab { padding: 8px 16px; font-size: 0.88rem; cursor: pointer; border-bottom: 2px solid transparent; color: #8b949e; background: none; border-radius: 0; }
   .tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
   .tab-content { display: none; }
   .tab-content.active { display: block; }
+  .filter-bar { display:flex; align-items:center; gap:8px; padding:12px 0 16px; flex-wrap:wrap; border-bottom:1px solid #21262d; margin-bottom:20px; }
+  .filter-bar-label { font-size:0.78rem; color:#8b949e; white-space:nowrap; }
+  .filter-btn { background:#21262d; color:#8b949e; border:1px solid #30363d; border-radius:20px; padding:3px 14px; font-size:0.78rem; cursor:pointer; }
+  .filter-btn.active { background:#1f6feb; color:#fff; border-color:#1f6feb; }
+  .form-group select { width:100%; background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:8px 10px; color:#c9d1d9; font-size:0.9rem; outline:none; }
+  textarea { width:100%; background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:8px 10px; color:#c9d1d9; font-size:0.9rem; outline:none; resize:vertical; font-family:inherit; }
+  textarea:focus, .form-group select:focus { border-color:#58a6ff; }
 </style>
 </head>
 <body>
@@ -59,12 +66,18 @@
 <div class="container">
 
   <div class="tabs">
-    <button class="tab active" onclick="switchTab('accounts')">Accounts</button>
-    <button class="tab" onclick="switchTab('tasks')">Scheduled Sends</button>
-    <button class="tab" onclick="switchTab('banners')">Banners</button>
-    <button class="tab" onclick="switchTab('replies')">Auto-Replies</button>
-    <button class="tab" onclick="switchTab('clicks')">Auto-Clicker</button>
-    <button class="tab" onclick="switchTab('add')">Add Account</button>
+    <button class="tab active" onclick="switchTab('accounts')">📱 Accounts</button>
+    <button class="tab" onclick="switchTab('tasks')">📨 Sends</button>
+    <button class="tab" onclick="switchTab('banners')">📌 Banners</button>
+    <button class="tab" onclick="switchTab('replies')">💬 Auto-Replies</button>
+    <button class="tab" onclick="switchTab('clicks')">🖱 Auto-Clicker</button>
+    <button class="tab" onclick="switchTab('add')">➕ Add Account</button>
+  </div>
+
+  <!-- Per-account filter bar — hidden on Accounts/Add tabs -->
+  <div class="filter-bar" id="filter-bar" style="display:none;">
+    <span class="filter-bar-label">Account:</span>
+    <div id="filter-btns" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
   </div>
 
   <!-- Accounts Tab -->
@@ -79,7 +92,32 @@
   <!-- Tasks Tab -->
   <div class="tab-content" id="tab-tasks">
     <div class="section">
-      <div class="section-title">📨 Scheduled Text Sends</div>
+      <div class="section-title">➕ Add Scheduled Send</div>
+      <div class="card" style="max-width:560px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <div class="form-group" style="margin:0;">
+            <label>Account</label>
+            <select id="send-phone"></select>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Chat ID or @username</label>
+            <input type="text" id="send-chat" placeholder="e.g. -100123456789 or @group">
+          </div>
+          <div class="form-group" style="margin:0;grid-column:1/-1;">
+            <label>Message</label>
+            <textarea id="send-message" rows="2" placeholder="Text to send repeatedly..."></textarea>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Interval (seconds, min 10)</label>
+            <input type="number" id="send-interval" value="300" min="10">
+          </div>
+        </div>
+        <button class="btn-primary" onclick="addSend()">➕ Start Send</button>
+        <div id="send-msg" style="margin-top:8px;"></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">📨 Active Scheduled Sends</div>
       <div id="tasks-list"><div class="empty">Loading...</div></div>
     </div>
   </div>
@@ -170,18 +208,68 @@
 <div id="toast"></div>
 
 <script>
-function switchTab(name) {
-  document.querySelectorAll('.tab').forEach((t,i) => {
-    const tabs = ['accounts','tasks','banners','replies','clicks','add'];
-    t.classList.toggle('active', tabs[i] === name);
+// ── Account filter state ────────────────────────────────────────────
+let _filterPhone = '';
+let _allAccounts = [];
+
+async function loadFilterBar() {
+  const res = await fetch('/api/accounts');
+  _allAccounts = (await res.json()).filter(a => a.connected);
+  const bar  = document.getElementById('filter-bar');
+  const btns = document.getElementById('filter-btns');
+  if (_allAccounts.length <= 1) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  btns.innerHTML = `<button class="filter-btn active" data-phone="" onclick="setFilter('')">All</button>` +
+    _allAccounts.map(a => {
+      const label = (a.name || a.phone).split(' ')[0];
+      return `<button class="filter-btn" data-phone="${a.phone}" onclick="setFilter('${a.phone}')">${label}</button>`;
+    }).join('');
+  _fillPhoneSelects();
+}
+
+function setFilter(phone) {
+  _filterPhone = phone;
+  document.querySelectorAll('#filter-btns .filter-btn').forEach(b => {
+    b.classList.toggle('active', (b.dataset.phone || '') === phone);
   });
+  const activeTab = document.querySelector('.tab-content.active');
+  if (!activeTab) return;
+  const id = activeTab.id.replace('tab-', '');
+  if (id === 'tasks')   loadTasks();
+  if (id === 'banners') loadBanners();
+  if (id === 'replies') loadReplies();
+  if (id === 'clicks')  loadClicks();
+}
+
+function _fillPhoneSelects() {
+  const opts = _allAccounts.length
+    ? _allAccounts.map(a => `<option value="${a.phone}">${(a.name||a.phone)} (${a.phone})</option>`).join('')
+    : '<option value="">No connected accounts</option>';
+  ['send-phone','click-phone'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = opts;
+  });
+  if (_filterPhone) {
+    ['send-phone','click-phone'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = _filterPhone;
+    });
+  }
+}
+
+// ── Tab switcher ─────────────────────────────────────────────────────
+function switchTab(name) {
+  const tabs = ['accounts','tasks','banners','replies','clicks','add'];
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', tabs[i] === name));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
+  const noFilter = name === 'accounts' || name === 'add';
+  document.getElementById('filter-bar').style.display = noFilter || _allAccounts.length <= 1 ? 'none' : 'flex';
   if (name === 'accounts') loadAccounts();
-  if (name === 'tasks') loadTasks();
-  if (name === 'banners') loadBanners();
-  if (name === 'replies') loadReplies();
-  if (name === 'clicks') { loadClicks(); populateClickPhones(); }
+  if (name === 'tasks')    { loadTasks();   _fillPhoneSelects(); }
+  if (name === 'banners')  loadBanners();
+  if (name === 'replies')  loadReplies();
+  if (name === 'clicks')   { loadClicks();  _fillPhoneSelects(); }
 }
 
 function toast(msg, ok=true) {
@@ -198,6 +286,12 @@ function fmtSecs(s) {
   return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
 }
 
+function _accLabel(phone) {
+  const a = _allAccounts.find(x => x.phone === phone);
+  return a ? (a.name || phone) : phone;
+}
+
+// ── Accounts tab ─────────────────────────────────────────────────────
 async function loadAccounts() {
   const res = await fetch('/api/accounts');
   const accs = await res.json();
@@ -217,7 +311,7 @@ async function loadAccounts() {
         </div>
         <button class="btn-danger" onclick="removeAcc('${a.phone}')">Remove</button>
       </div>
-      <div class="meta">${a.phone} &nbsp;·&nbsp; ${a.banners} banners &nbsp;·&nbsp; ${a.replies} auto-replies &nbsp;·&nbsp; ${a.sends} scheduled sends</div>
+      <div class="meta">${a.phone} &nbsp;·&nbsp; ${a.banners} banners &nbsp;·&nbsp; ${a.replies} auto-replies &nbsp;·&nbsp; ${a.sends} sends</div>
     </div>
   `).join('');
   stats.innerHTML = `
@@ -232,21 +326,27 @@ async function loadAccounts() {
 async function removeAcc(phone) {
   if (!confirm('Remove account ' + phone + '?')) return;
   await fetch('/api/accounts/' + phone.replace('+','-'), {method:'DELETE'});
-  toast('Account removed'); loadAccounts();
+  toast('Account removed'); loadAccounts(); loadFilterBar();
 }
 
+// ── Sends tab ────────────────────────────────────────────────────────
 async function loadTasks() {
   const res = await fetch('/api/tasks');
-  const tasks = await res.json();
+  let tasks = await res.json();
+  if (_filterPhone) tasks = tasks.filter(t => t.phone === _filterPhone);
   const el = document.getElementById('tasks-list');
-  if (!tasks.length) { el.innerHTML = '<div class="empty">No scheduled sends active.</div>'; return; }
+  if (!tasks.length) { el.innerHTML = '<div class="empty">No scheduled sends' + (_filterPhone ? ' for this account' : '') + '.</div>'; return; }
   el.innerHTML = tasks.map(t => `
     <div class="card">
       <div class="card-header">
-        <div><strong>${t.name || t.phone}</strong> → Chat <code>${t.chat_id}</code></div>
+        <div>
+          <strong>${_accLabel(t.phone)}</strong>
+          <span style="color:#8b949e;font-size:0.8rem;"> ${t.phone}</span>
+          → Chat <code>${t.chat_id}</code>
+        </div>
         <button class="btn-danger" onclick="stopTask('${t.phone}','${t.chat_id}')">Stop</button>
       </div>
-      <div class="meta">Interval: ${fmtSecs(t.interval_sec)}</div>
+      <div class="meta">Every ${fmtSecs(t.interval_sec)}</div>
       <div style="margin-top:8px;font-size:0.85rem;color:#c9d1d9;white-space:pre-wrap;">${t.message}</div>
     </div>
   `).join('');
@@ -257,15 +357,49 @@ async function stopTask(phone, chat_id) {
   toast('Task stopped'); loadTasks();
 }
 
+async function addSend() {
+  const phone    = document.getElementById('send-phone').value.trim();
+  const chat     = document.getElementById('send-chat').value.trim();
+  const message  = document.getElementById('send-message').value;
+  const interval = parseInt(document.getElementById('send-interval').value) || 300;
+  const msg      = document.getElementById('send-msg');
+
+  if (!phone)   { msg.innerHTML = '<div class="msg msg-err">Select an account first.</div>'; return; }
+  if (!chat)    { msg.innerHTML = '<div class="msg msg-err">Enter chat ID or @username.</div>'; return; }
+  if (!message.trim()) { msg.innerHTML = '<div class="msg msg-err">Enter a message.</div>'; return; }
+
+  msg.innerHTML = '<div class="msg">Starting...</div>';
+  const res = await fetch('/api/tasks', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({phone, chat_id: chat, message, interval_sec: interval})
+  });
+  const data = await res.json();
+  if (res.ok && data.ok) {
+    msg.innerHTML = '<div class="msg msg-ok">✅ Scheduled send started!</div>';
+    document.getElementById('send-chat').value = '';
+    document.getElementById('send-message').value = '';
+    loadTasks();
+  } else {
+    msg.innerHTML = '<div class="msg msg-err">❌ ' + (data.detail || 'Error') + '</div>';
+  }
+}
+
+// ── Banners tab ──────────────────────────────────────────────────────
 async function loadBanners() {
   const res = await fetch('/api/banners');
-  const banners = await res.json();
+  let banners = await res.json();
+  if (_filterPhone) banners = banners.filter(b => b.phone === _filterPhone);
   const el = document.getElementById('banners-list');
-  if (!banners.length) { el.innerHTML = '<div class="empty">No active banners.</div>'; return; }
+  if (!banners.length) { el.innerHTML = '<div class="empty">No active banners' + (_filterPhone ? ' for this account' : '') + '.</div>'; return; }
   el.innerHTML = banners.map(b => `
     <div class="card">
       <div class="card-header">
-        <div><strong>${b.phone}</strong> → Chat <code>${b.chat_id}</code></div>
+        <div>
+          <strong>${_accLabel(b.phone)}</strong>
+          <span style="color:#8b949e;font-size:0.8rem;"> ${b.phone}</span>
+          → Chat <code>${b.chat_id}</code>
+        </div>
         <button class="btn-danger" onclick="delBanner(${b.id})">Stop</button>
       </div>
       <div class="meta">Source: ${b.source_chat} · Msg ID: ${b.msg_id} · Interval: ${fmtSecs(b.interval_sec)} · Mode: ${b.mode}</div>
@@ -278,15 +412,21 @@ async function delBanner(bid) {
   toast('Banner stopped'); loadBanners();
 }
 
+// ── Replies tab ──────────────────────────────────────────────────────
 async function loadReplies() {
   const res = await fetch('/api/replies');
-  const replies = await res.json();
+  let replies = await res.json();
+  if (_filterPhone) replies = replies.filter(r => r.phone === _filterPhone);
   const el = document.getElementById('replies-list');
-  if (!replies.length) { el.innerHTML = '<div class="empty">No auto-reply rules.</div>'; return; }
+  if (!replies.length) { el.innerHTML = '<div class="empty">No auto-reply rules' + (_filterPhone ? ' for this account' : '') + '.</div>'; return; }
   el.innerHTML = replies.map(r => `
     <div class="card">
       <div class="card-header">
-        <div><strong>${r.phone}</strong> &nbsp; keyword: <code>${r.keyword}</code></div>
+        <div>
+          <strong>${_accLabel(r.phone)}</strong>
+          <span style="color:#8b949e;font-size:0.8rem;"> ${r.phone}</span>
+          &nbsp; keyword: <code>${r.keyword}</code>
+        </div>
         <button class="btn-danger" onclick="delReply(${r.id})">Delete</button>
       </div>
       <div class="meta">Reply: ${r.reply} &nbsp;·&nbsp; <span class="badge ${r.enabled ? 'badge-green' : 'badge-gray'}">${r.enabled ? 'Enabled' : 'Disabled'}</span></div>
@@ -299,17 +439,20 @@ async function delReply(rid) {
   toast('Reply rule deleted'); loadReplies();
 }
 
+// ── Auto-Clicker tab ─────────────────────────────────────────────────
 async function loadClicks() {
   const res = await fetch('/api/clicks');
-  const clicks = await res.json();
+  let clicks = await res.json();
+  if (_filterPhone) clicks = clicks.filter(c => c.phone === _filterPhone);
   const el = document.getElementById('clicks-list');
-  if (!clicks.length) { el.innerHTML = '<div class="empty">No active auto-clicker rules.</div>'; return; }
+  if (!clicks.length) { el.innerHTML = '<div class="empty">No active auto-clicker rules' + (_filterPhone ? ' for this account' : '') + '.</div>'; return; }
   el.innerHTML = clicks.map(c => `
     <div class="card">
       <div class="card-header">
         <div>
-          <strong>${c.phone}</strong>
-          <span style="color:#8b949e"> → @${c.bot_username}</span>
+          <strong>${_accLabel(c.phone)}</strong>
+          <span style="color:#8b949e;font-size:0.8rem;"> ${c.phone}</span>
+          → @${c.bot_username}
         </div>
         <button class="btn-danger" onclick="delClick(${c.id})">Delete</button>
       </div>
@@ -327,17 +470,6 @@ async function delClick(cid) {
   toast('Clicker rule deleted'); loadClicks();
 }
 
-async function populateClickPhones() {
-  const sel = document.getElementById('click-phone');
-  if (!sel) return;
-  const res = await fetch('/api/accounts');
-  const accs = await res.json();
-  const connected = accs.filter(a => a.connected);
-  sel.innerHTML = connected.length
-    ? connected.map(a => `<option value="${a.phone}">${a.name || a.phone} (${a.phone})</option>`).join('')
-    : '<option value="">No connected accounts</option>';
-}
-
 async function addClick() {
   const phone   = document.getElementById('click-phone').value.trim();
   const bot     = document.getElementById('click-bot').value.trim();
@@ -346,9 +478,9 @@ async function addClick() {
   const count   = parseInt(document.getElementById('click-count').value);
   const msg     = document.getElementById('click-msg');
 
-  if (!phone) { msg.innerHTML = '<div class="msg msg-err">Select an account first.</div>'; return; }
-  if (!bot)   { msg.innerHTML = '<div class="msg msg-err">Enter bot username.</div>'; return; }
-  if (!pattern){ msg.innerHTML = '<div class="msg msg-err">Enter button pattern.</div>'; return; }
+  if (!phone)   { msg.innerHTML = '<div class="msg msg-err">Select an account first.</div>'; return; }
+  if (!bot)     { msg.innerHTML = '<div class="msg msg-err">Enter bot username.</div>'; return; }
+  if (!pattern) { msg.innerHTML = '<div class="msg msg-err">Enter button pattern.</div>'; return; }
 
   msg.innerHTML = '<div class="msg">Adding...</div>';
   const res = await fetch('/api/clicks', {

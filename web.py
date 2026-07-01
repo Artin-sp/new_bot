@@ -20,6 +20,7 @@ class PhoneReq(BaseModel):  phone: str
 class CodeReq(BaseModel):   phone: str; code: str; pw: str = ""
 class TFAReq(BaseModel):    phone: str; pw: str
 class ClickReq(BaseModel):  phone: str; bot_username: str; pattern: str; remaining: int = -1; delay_sec: int = 2
+class SendReq(BaseModel):   phone: str; chat_id: str; message: str; interval_sec: int = 60
 
 @app.post("/api/login/code")
 async def send_code(r: PhoneReq):
@@ -59,6 +60,17 @@ async def tasks():
                     "chat_id": r["chat_id"], "message": r["message"],
                     "interval_sec": r["interval_sec"]})
     return out
+
+@app.post("/api/tasks")
+async def add_task(r: SendReq):
+    phone = r.phone
+    if phone not in mgr.accs:
+        raise HTTPException(400, "Account not connected")
+    chat = r.chat_id.strip()
+    if not chat:
+        raise HTTPException(400, "Chat ID is required")
+    await mgr.start_send(mgr.accs[phone], chat, r.message, max(10, r.interval_sec))
+    return {"ok": True}
 
 @app.delete("/api/tasks/{phone}/{chat_id}")
 async def stop_task(phone: str, chat_id: str):
