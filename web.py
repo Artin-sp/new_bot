@@ -16,9 +16,10 @@ async def root():
 async def accounts():
     return mgr.status()
 
-class PhoneReq(BaseModel): phone: str
-class CodeReq(BaseModel):  phone: str; code: str; pw: str = ""
-class TFAReq(BaseModel):   phone: str; pw: str
+class PhoneReq(BaseModel):  phone: str
+class CodeReq(BaseModel):   phone: str; code: str; pw: str = ""
+class TFAReq(BaseModel):    phone: str; pw: str
+class ClickReq(BaseModel):  phone: str; bot_username: str; pattern: str; remaining: int = -1; delay_sec: int = 2
 
 @app.post("/api/login/code")
 async def send_code(r: PhoneReq):
@@ -102,6 +103,23 @@ async def clicks():
     c = db.conn()
     rows = c.execute("SELECT * FROM click_rules WHERE active=1 ORDER BY id DESC").fetchall()
     c.close(); return [dict(r) for r in rows]
+
+@app.post("/api/clicks")
+async def add_click(r: ClickReq):
+    phone = r.phone
+    if phone not in mgr.accs:
+        raise HTTPException(400, "Account not connected")
+    botname = r.bot_username.lstrip("@").lower().strip()
+    if not botname:
+        raise HTTPException(400, "Bot username is required")
+    c   = db.conn()
+    cur = c.execute(
+        "INSERT INTO click_rules(phone, bot_username, pattern, remaining, delay_sec)"
+        " VALUES(?,?,?,?,?)",
+        (phone, botname, r.pattern.strip(), r.remaining, max(1, r.delay_sec))
+    )
+    rule_id = cur.lastrowid; c.commit(); c.close()
+    return {"ok": True, "id": rule_id}
 
 @app.delete("/api/clicks/{cid}")
 async def del_click(cid: int):

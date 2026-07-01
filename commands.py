@@ -456,7 +456,8 @@ def register(client, acc, manager):
             _ai_history_push(acc.phone, "assistant", answer)
 
             prefix = f"🤖 {ai_name}، " if ai_name else "🤖 "
-            await client.send_message(event.chat_id, f"{prefix}{answer}")
+            reply_text = f"❓ **{question}**\n\n{prefix}{answer}"
+            await client.send_message(event.chat_id, reply_text)
         except Exception as e:
             await client.send_message("me", f"❌ هوش مصنوعی: {e}")
 

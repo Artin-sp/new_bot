@@ -103,7 +103,36 @@
   <!-- Auto-clicker Tab -->
   <div class="tab-content" id="tab-clicks">
     <div class="section">
-      <div class="section-title">🖱️ Auto-Clicker Rules</div>
+      <div class="section-title">➕ Add Auto-Clicker Rule</div>
+      <div class="card" style="max-width:560px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <div class="form-group" style="margin:0;">
+            <label>Account</label>
+            <select id="click-phone" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;color:#c9d1d9;font-size:0.9rem;outline:none;"></select>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Bot @username</label>
+            <input type="text" id="click-bot" placeholder="e.g. claimbot" style="width:100%;">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Button Pattern (text to match)</label>
+            <input type="text" id="click-pattern" placeholder="e.g. Claim" style="width:100%;">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Delay (seconds)</label>
+            <input type="number" id="click-delay" value="2" min="1" style="width:100%;">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Count (-1 = unlimited)</label>
+            <input type="number" id="click-count" value="-1" style="width:100%;">
+          </div>
+        </div>
+        <button class="btn-primary" onclick="addClick()">➕ Add Rule</button>
+        <div id="click-msg" style="margin-top:8px;"></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">🖱️ Active Auto-Clicker Rules</div>
       <div id="clicks-list"><div class="empty">Loading...</div></div>
     </div>
   </div>
@@ -152,7 +181,7 @@ function switchTab(name) {
   if (name === 'tasks') loadTasks();
   if (name === 'banners') loadBanners();
   if (name === 'replies') loadReplies();
-  if (name === 'clicks') loadClicks();
+  if (name === 'clicks') { loadClicks(); populateClickPhones(); }
 }
 
 function toast(msg, ok=true) {
@@ -274,14 +303,21 @@ async function loadClicks() {
   const res = await fetch('/api/clicks');
   const clicks = await res.json();
   const el = document.getElementById('clicks-list');
-  if (!clicks.length) { el.innerHTML = '<div class="empty">No auto-clicker rules.</div>'; return; }
+  if (!clicks.length) { el.innerHTML = '<div class="empty">No active auto-clicker rules.</div>'; return; }
   el.innerHTML = clicks.map(c => `
     <div class="card">
       <div class="card-header">
-        <div><strong>${c.phone}</strong> → @${c.bot_username}</div>
+        <div>
+          <strong>${c.phone}</strong>
+          <span style="color:#8b949e"> → @${c.bot_username}</span>
+        </div>
         <button class="btn-danger" onclick="delClick(${c.id})">Delete</button>
       </div>
-      <div class="meta">Pattern: <code>${c.pattern}</code> · Delay: ${c.delay_sec}s · Remaining: ${c.remaining < 0 ? '∞' : c.remaining}</div>
+      <div class="meta">
+        Pattern: <code>${c.pattern}</code>
+        &nbsp;·&nbsp; Delay: ${c.delay_sec}s
+        &nbsp;·&nbsp; Remaining: <strong style="color:${c.remaining < 0 ? '#56d364' : '#f0883e'}">${c.remaining < 0 ? '∞ unlimited' : c.remaining}</strong>
+      </div>
     </div>
   `).join('');
 }
@@ -289,6 +325,47 @@ async function loadClicks() {
 async function delClick(cid) {
   await fetch('/api/clicks/' + cid, {method:'DELETE'});
   toast('Clicker rule deleted'); loadClicks();
+}
+
+async function populateClickPhones() {
+  const sel = document.getElementById('click-phone');
+  if (!sel) return;
+  const res = await fetch('/api/accounts');
+  const accs = await res.json();
+  const connected = accs.filter(a => a.connected);
+  sel.innerHTML = connected.length
+    ? connected.map(a => `<option value="${a.phone}">${a.name || a.phone} (${a.phone})</option>`).join('')
+    : '<option value="">No connected accounts</option>';
+}
+
+async function addClick() {
+  const phone   = document.getElementById('click-phone').value.trim();
+  const bot     = document.getElementById('click-bot').value.trim();
+  const pattern = document.getElementById('click-pattern').value.trim();
+  const delay   = parseInt(document.getElementById('click-delay').value) || 2;
+  const count   = parseInt(document.getElementById('click-count').value);
+  const msg     = document.getElementById('click-msg');
+
+  if (!phone) { msg.innerHTML = '<div class="msg msg-err">Select an account first.</div>'; return; }
+  if (!bot)   { msg.innerHTML = '<div class="msg msg-err">Enter bot username.</div>'; return; }
+  if (!pattern){ msg.innerHTML = '<div class="msg msg-err">Enter button pattern.</div>'; return; }
+
+  msg.innerHTML = '<div class="msg">Adding...</div>';
+  const res = await fetch('/api/clicks', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({phone, bot_username: bot, pattern, remaining: isNaN(count) ? -1 : count, delay_sec: delay})
+  });
+  const data = await res.json();
+  if (res.ok && data.ok) {
+    msg.innerHTML = '<div class="msg msg-ok">✅ Rule added! (ID: ' + data.id + ')</div>';
+    document.getElementById('click-bot').value = '';
+    document.getElementById('click-pattern').value = '';
+    document.getElementById('click-count').value = '-1';
+    loadClicks();
+  } else {
+    msg.innerHTML = '<div class="msg msg-err">❌ ' + (data.detail || 'Error') + '</div>';
+  }
 }
 
 // Login flow
