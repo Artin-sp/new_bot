@@ -1,6 +1,6 @@
 # commands.py — every dot-command, registered per user account.
 # Every command works in both Persian and English (e.g. .قیمت or .price).
-import asyncio, os, random, time, tempfile, secrets, string
+import asyncio, os, random, time, tempfile, secrets, string, json
 import html as _html
 from datetime import datetime, timezone, timedelta
 from telethon import events
@@ -36,6 +36,43 @@ LUCK_MSGS = [
     "امروز روز خوبیه برای تصمیم‌های مهم ✅",
     "بهتره امروز یکم استراحت کنی 😌",
 ]
+
+# ── Voice map for edge-tts ────────────────────────────────────────────
+# lang key → (female_voice, male_voice)
+VOICE_MAP = {
+    "fa":    ("fa-IR-DilaraNeural",    "fa-IR-FaridNeural"),
+    "en":    ("en-US-JennyNeural",     "en-US-GuyNeural"),
+    "en-gb": ("en-GB-SoniaNeural",     "en-GB-RyanNeural"),
+    "en-au": ("en-AU-NatashaNeural",   "en-AU-WilliamNeural"),
+    "ar":    ("ar-SA-ZariyahNeural",   "ar-SA-HamedNeural"),
+}
+VOICE_LABEL = {
+    "fa": "فارسی", "en": "انگلیسی (آمریکا)",
+    "en-gb": "انگلیسی (بریتانیا)", "en-au": "انگلیسی (استرالیا)",
+    "ar": "عربی",
+}
+
+def _pick_voice(phone: str, text: str) -> str:
+    """Return the edge-tts voice name based on per-account settings + text language."""
+    lang   = db.get(phone, "tts_lang", "auto")
+    gender = db.get(phone, "tts_gender", "f")
+    if lang == "auto":
+        lang = "fa" if any('\u0600' <= c <= '\u06FF' for c in text) else "en"
+    pair = VOICE_MAP.get(lang, VOICE_MAP["fa"])
+    return pair[0] if gender == "f" else pair[1]
+
+# ── AI per-user memory helpers ────────────────────────────────────────
+def _ai_history(phone: str):
+    raw = db.get(phone, "ai_history", "[]")
+    try:    return json.loads(raw)
+    except: return []
+
+def _ai_history_push(phone: str, role: str, content: str):
+    h = _ai_history(phone)
+    h.append({"role": role, "content": content})
+    if len(h) > 12:          # keep last 6 exchanges
+        h = h[-12:]
+    db.put(phone, "ai_history", json.dumps(h, ensure_ascii=False))
 
 
 def _fmt(text: str, active: dict) -> str:
@@ -73,7 +110,8 @@ def register(client, acc, manager):
             f"✅ ارسال شروع شد (بعد از ری‌استارت هم ادامه پیدا میکنه)\n"
             f"📍 {title}\n💬 `{text}`\n⏱ هر {secs} ثانیه")
 
-    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:stop|توقف)$'))
+    @client.on(events.NewMessage(outgoing=True,
+               pattern=r'^\.(?:stop|توقف|پایان ارسال|stopsend)$'))
     async def _stop(event):
         cid   = str(event.chat_id)
         chat  = await event.get_chat()
@@ -244,20 +282,17 @@ def register(client, acc, manager):
         _spam_stop.add(acc.phone)
         await client.send_message("me", "⏹ اسپم متوقف شد")
 
-    # ── ویس (TTS) / voice ────────────────────────────────────────
-    async def _do_tts(target_event, text):
+    # ── ویس (TTS) / voice — uses edge-tts (Microsoft, free, Persian+English) ─
+    async def _do_tts(target_event, text: str):
         await target_event.delete()
         tmp = None
         try:
-            from gtts import gTTS
-            lang = "fa" if any('\u0600' <= ch <= '\u06FF' for ch in text) else "en"
-            def _gen():
-                import tempfile as _tf
-                fd, path = _tf.mkstemp(suffix=".mp3")
-                os.close(fd)
-                gTTS(text=text, lang=lang, slow=False).save(path)
-                return path
-            tmp = await asyncio.get_event_loop().run_in_executor(None, _gen)
+            import edge_tts
+            voice = _pick_voice(acc.phone, text)
+            fd, tmp = tempfile.mkstemp(suffix=".mp3")
+            os.close(fd)
+            comm = edge_tts.Communicate(text, voice)
+            await comm.save(tmp)
             await client.send_file(target_event.chat_id, tmp, voice_note=True, caption="")
         except Exception as e:
             await client.send_message("me", f"❌ ویس: {e}")
@@ -283,6 +318,42 @@ def register(client, acc, manager):
             await client.send_message("me", "❌ پیامی که ریپلای کردی متن نداره")
             return
         await _do_tts(event, reply.text)
+
+    # ── تنظیم صدا / voice settings ────────────────────────────────────
+    # Usage:  .ویس‌صدا fa f      (Persian female)
+    #         .ویس‌صدا en m      (English US male)
+    #         .ویس‌صدا en-gb f   (British female)
+    #         .ویس‌صدا en-au m   (Australian male)
+    #         .ویس‌صدا ar f      (Arabic female)
+    #         .voiceset auto     (auto-detect per message)
+    @client.on(events.NewMessage(outgoing=True,
+               pattern=r'^\.(?:ویس‌صدا|voiceset)\s+(\S+)(?:\s+(f|m|زن|مرد))?$'))
+    async def _voiceset(event):
+        lang   = event.pattern_match.group(1).strip().lower()
+        gender_raw = (event.pattern_match.group(2) or "f").lower()
+        await event.delete()
+        gender = "m" if gender_raw in ("m", "مرد") else "f"
+        if lang not in VOICE_MAP and lang != "auto":
+            langs = " | ".join(VOICE_MAP.keys()) + " | auto"
+            await client.send_message("me",
+                f"❌ زبان نامعتبر.\nزبان‌های مجاز:\n`{langs}`\n\n"
+                "جنسیت: `f` (زن) یا `m` (مرد)")
+            return
+        db.put(acc.phone, "tts_lang",   lang)
+        db.put(acc.phone, "tts_gender", gender)
+        if lang == "auto":
+            await client.send_message("me",
+                "✅ صدا: **خودکار** (فارسی تشخیص داده میشه → فارسی، غیرفارسی → انگلیسی)\n"
+                f"جنسیت: {'زن 👩' if gender == 'f' else 'مرد 👨'}")
+        else:
+            pair  = VOICE_MAP[lang]
+            voice = pair[0] if gender == "f" else pair[1]
+            lbl   = VOICE_LABEL.get(lang, lang)
+            await client.send_message("me",
+                f"✅ صدا تغییر کرد\n"
+                f"🌐 زبان: {lbl}\n"
+                f"👤 جنسیت: {'زن 👩' if gender == 'f' else 'مرد 👨'}\n"
+                f"🎙 مدل: `{voice}`")
 
     # ── متن (STT) / totext — reply to a voice note ──────────────────
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:متن|totext|stt)$'))
@@ -325,7 +396,7 @@ def register(client, acc, manager):
                 try: os.unlink(tmp)
                 except: pass
 
-    # ── هوش مصنوعی / ai ──────────────────────────────────────────
+    # ── هوش مصنوعی / ai — با حافظه شخصی برای هر اکانت ───────────────
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:هوش|ai) (.+)$'))
     async def _ai(event):
         question = event.pattern_match.group(1).strip()
@@ -337,6 +408,32 @@ def register(client, acc, manager):
                 "توی Replit → Secrets اضافه کن:\nکلید: `GROQ_API_KEY`\n"
                 "مقدار: کلید رایگان از console.groq.com")
             return
+
+        # Commands embedded in the question
+        if question.strip().startswith(("نام ", "name ", "اسم ")):
+            uname = question.split(" ", 1)[1].strip()
+            db.put(acc.phone, "ai_name", uname)
+            await client.send_message("me", f"✅ اسمت رو یادداشت کردم: **{uname}**")
+            return
+        if question.strip() in ("ریست", "reset", "فراموش", "forget"):
+            db.put(acc.phone, "ai_history", "[]")
+            await client.send_message("me", "✅ حافظه مکالمه پاک شد")
+            return
+
+        ai_name = db.get(acc.phone, "ai_name", "")
+        history = _ai_history(acc.phone)
+
+        name_line = f"The user's name is {ai_name}. " if ai_name else ""
+        system_prompt = (
+            f"{name_line}"
+            "You are a smart, concise personal assistant built into a Telegram userbot. "
+            "Always reply in the same language the user writes in (Persian/Farsi or English). "
+            "You remember previous messages in this conversation. "
+            "Be direct and helpful. Do not add unnecessary filler text."
+        )
+
+        messages = [{"role": "system", "content": system_prompt}] + history + [{"role": "user", "content": question}]
+
         try:
             import requests as _req
             def _call_groq():
@@ -345,17 +442,21 @@ def register(client, acc, manager):
                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                     json={
                         "model": "llama-3.3-70b-versatile",
-                        "messages": [
-                            {"role": "system", "content": "You are a helpful assistant. Always reply in the same language the user writes in. Be concise."},
-                            {"role": "user", "content": question}
-                        ],
-                        "max_tokens": 1024
+                        "messages": messages,
+                        "max_tokens": 1024,
+                        "temperature": 0.7,
                     }, timeout=30)
                 r.raise_for_status()
                 return r.json()
             res    = await asyncio.get_event_loop().run_in_executor(None, _call_groq)
             answer = res["choices"][0]["message"]["content"].strip()
-            await client.send_message(event.chat_id, f"🤖 {answer}")
+
+            # Save exchange to per-account memory
+            _ai_history_push(acc.phone, "user",      question)
+            _ai_history_push(acc.phone, "assistant", answer)
+
+            prefix = f"🤖 {ai_name}، " if ai_name else "🤖 "
+            await client.send_message(event.chat_id, f"{prefix}{answer}")
         except Exception as e:
             await client.send_message("me", f"❌ هوش مصنوعی: {e}")
 
@@ -379,28 +480,39 @@ def register(client, acc, manager):
     async def _price(event):
         await event.delete()
         try:
-            import urllib.request, json
-            req = urllib.request.Request(
-                "https://api.nobitex.ir/market/stats",
-                data=json.dumps({"dstCurrency": "rls"}).encode(),
-                headers={"Content-Type": "application/json"})
-            data  = json.loads(urllib.request.urlopen(req, timeout=10).read())
+            import requests as _req
+            coins = [
+                ("usdt", "🟢 تتر (≈ دلار آزاد)"),
+                ("btc",  "₿ بیتکوین"),
+                ("eth",  "⟠ اتریوم"),
+                ("bnb",  "⬡ بایننس‌کوین"),
+                ("trx",  "🔺 ترون"),
+                ("doge", "🐕 دوج‌کوین"),
+                ("ltc",  "Ł لایت‌کوین"),
+            ]
+            src_str = ",".join(c[0] for c in coins)
+
+            def _fetch():
+                r = _req.get(
+                    f"https://api.nobitex.ir/market/stats?srcCurrency={src_str}&dstCurrency=rls",
+                    headers={"User-Agent": "Mozilla/5.0"},
+                    timeout=12)
+                r.raise_for_status()
+                return r.json()
+
+            data  = await asyncio.get_event_loop().run_in_executor(None, _fetch)
             stats = data.get("stats", {})
 
             def toman(pair):
                 s = stats.get(pair)
                 if not s: return None, None
-                latest = float(s.get("latest") or s.get("bestSell") or 0)
-                return round(latest / 10), s.get("dayChange", "0")
+                v = float(s.get("latest") or s.get("bestSell") or 0)
+                return round(v / 10), s.get("dayChange", "0")
 
-            coins = [("usdt","🟢 تتر (≈ دلار آزاد)"), ("btc","₿ بیتکوین"),
-                     ("eth","⟠ اتریوم"), ("bnb","⬡ بایننس‌کوین"),
-                     ("trx","🔺 ترون"), ("doge","🐕 دوج‌کوین"), ("ltc","Ł لایت‌کوین")]
             lines = ["💱 **قیمت لحظه‌ای — منبع: نوبیتکس**\n"]
             for code, label in coins:
                 t, chg = toman(f"{code}-rls")
-                if t is None:
-                    continue
+                if t is None: continue
                 try:    arrow = "📈" if float(chg) >= 0 else "📉"
                 except: arrow = "•"
                 lines.append(f"{label}:  {t:,} تومان   {arrow} {chg}%")
@@ -658,11 +770,14 @@ def register(client, acc, manager):
             "`.اسپم 20 سلام`  `.اسپم سریع 20 سلام`  `.اسپم آرام 20 سلام`\n"
             "`.پایان اسپم`\n\n"
             "**🎙 ویس (تبدیل دوطرفه):**\n"
-            "`.ویس سلام به همه` ← متن به ویس (فارسی/انگلیسی خودکار تشخیص داده میشه)\n"
+            "`.ویس سلام به همه` ← متن به ویس\n"
             "`.ویس` (ریپلای روی پیام متنی) ← همون پیام رو ویس میکنه\n"
-            "`.متن` / `.totext` (ریپلای روی ویس) ← ویس رو متن میکنه — نیاز به OPENAI_API_KEY\n\n"
-            "**🤖 هوش مصنوعی:**\n"
-            "`.هوش [سوال]` ← نیاز به OPENAI_API_KEY\n\n"
+            "`.متن` / `.totext` (ریپلای روی ویس) ← ویس رو متن میکنه — نیاز به GROQ_API_KEY\n"
+            "`.ویس‌صدا fa f` / `en m` / `en-gb f` / `en-au m` / `ar f` ← تنظیم زبان و جنسیت\n\n"
+            "**🤖 هوش مصنوعی (با حافظه شخصی):**\n"
+            "`.هوش [سوال]` ← نیاز به GROQ_API_KEY (رایگان)\n"
+            "`.هوش نام [اسمت]` ← اسمت رو یادداشت میکنه\n"
+            "`.هوش ریست` ← تاریخچه مکالمه پاک میشه\n\n"
             "**🌐 ابزار:**\n"
             "`.ترجمه Hello world` ← به فارسی\n"
             "`.قیمت` / `.price` ← قیمت لحظه‌ای تومان (منبع: نوبیتکس)\n"

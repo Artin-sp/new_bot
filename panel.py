@@ -30,18 +30,19 @@ def kb_menu(phone):
         [_b(f"{_icon(phone,'ar_on')} پاسخ‌خودکار",  "sub_ar",   phone),
          _b(f"{_icon(phone,'sec_on')} منشی",         "sub_sec",  phone),
          _b(f"{_icon(phone,'autoseen')} سین خودکار", "sub_seen", phone)],
-        [_b("📌 تیچی",     "sub_techy", phone),
-         _b("💣 اسپم",     "sub_spam",  phone),
-         _b("✏️ حالت‌متن", "sub_fmt",   phone)],
-        [_b("🎙 ویس / متن", "sub_tts",   phone),
-         _b("🤖 هوش مصنوعی","sub_ai",    phone),
-         _b("🌐 ترجمه",     "sub_tr",    phone)],
-        [_b("💰 قیمت ارز",   "sub_price", phone),
-         _b("🕐 ساعت‌وتاریخ","sub_clock", phone),
-         _b("🏓 بینگ",       "sub_ping",  phone)],
-        [_b("🎲 بازی‌ها",     "sub_games", phone),
-         _b("🖱 اتوکلیکر",    "sub_click", phone)],
-        [_b("🧰 ابزار دیگه",  "sub_tools", phone)],
+        [_b("📌 تیچی",      "sub_techy", phone),
+         _b("📨 ارسال",     "sub_send",  phone),
+         _b("💣 اسپم",      "sub_spam",  phone)],
+        [_b("✏️ حالت‌متن",  "sub_fmt",   phone),
+         _b("🎙 ویس / متن", "sub_tts",   phone),
+         _b("🤖 هوش مصنوعی","sub_ai",    phone)],
+        [_b("🌐 ترجمه",     "sub_tr",    phone),
+         _b("💰 قیمت ارز",  "sub_price", phone),
+         _b("🕐 ساعت‌وتاریخ","sub_clock", phone)],
+        [_b("🏓 بینگ",      "sub_ping",  phone),
+         _b("🎲 بازی‌ها",   "sub_games", phone),
+         _b("🖱 اتوکلیکر",  "sub_click", phone)],
+        [_b("🧰 ابزار دیگه","sub_tools", phone)],
         [_b("» بازگشت", "main", phone)],
     ]
 
@@ -97,6 +98,35 @@ def _sub_seen(phone):
     return txt, kb
 
 
+def _sub_send(phone):
+    c    = db.conn()
+    rows = c.execute(
+        "SELECT chat_id, message, interval_sec FROM sends WHERE phone=? AND active=1",
+        (phone,)).fetchall()
+    c.close()
+    if rows:
+        lines = [f"» ارسال زمان‌بندی — {len(rows)} فعال\n"]
+        for r in rows:
+            msg_preview = r["message"][:30] + ("…" if len(r["message"]) > 30 else "")
+            lines.append(f"• چت `{r['chat_id']}` — هر {r['interval_sec']}ث\n  «{msg_preview}»")
+        detail = "\n".join(lines)
+    else:
+        detail = "» ارسال زمان‌بندی\n\nهیچ ارسال فعالی نداری"
+    txt = (
+        f"{detail}\n\n"
+        "─────────────────\n"
+        "**نحوه استفاده:**\n"
+        "توی هر چتی که میخوای بنویس:\n\n"
+        "`.ارسال [پیام] [ثانیه]`\n"
+        "مثال: `.ارسال سلام 300`\n"
+        "(هر ۳۰۰ ثانیه «سلام» میفرسته)\n\n"
+        "`.stop` یا `.پایان ارسال` ← متوقف کردن ارسال\n"
+        "`.stopall` ← همه ارسال‌ها\n\n"
+        "💡 بعد از ری‌استارت سرور هم ادامه پیدا میکنه"
+    )
+    return txt, [[_b("» بازگشت", "menu", phone)]]
+
+
 def _sub_techy(phone):
     c   = db.conn()
     cnt = c.execute("SELECT COUNT(*) n FROM banners WHERE phone=? AND active=1",
@@ -145,26 +175,53 @@ def _sub_fmt(phone):
 
 def _sub_tts(phone):
     has_key = bool(os.getenv("GROQ_API_KEY", ""))
+    lang    = db.get(phone, "tts_lang",   "auto")
+    gender  = db.get(phone, "tts_gender", "f")
+    gender_lbl = "زن 👩" if gender == "f" else "مرد 👨"
+    lang_names = {
+        "auto": "خودکار (تشخیص زبان)", "fa": "فارسی",
+        "en": "انگلیسی (آمریکا)", "en-gb": "انگلیسی (بریتانیا)",
+        "en-au": "انگلیسی (استرالیا)", "ar": "عربی",
+    }
+    lang_lbl = lang_names.get(lang, lang)
     txt = (
         "» ویس و تبدیل به متن\n\n"
-        "`.ویس [متن]`  /  `.voice`  ← متن به ویس\n"
-        "(زبان فارسی/انگلیسی خودکار تشخیص داده میشه)\n\n"
-        "`.ویس` (ریپلای روی پیام متنی)  ← همون پیام رو ویس میکنه\n\n"
-        "`.متن` / `.totext` (ریپلای روی ویس)  ← ویس رو متن میکنه (Groq Whisper)\n"
-        f"وضعیت تبدیل به متن: {'✅ فعال' if has_key else '❌ نیاز به GROQ_API_KEY'}"
+        "`.ویس [متن]`  ← متن به ویس\n"
+        "`.ویس` (ریپلای روی پیام)  ← همون پیام رو ویس میکنه\n"
+        "`.متن` / `.totext` (ریپلای روی ویس)  ← ویس رو متن میکنه\n\n"
+        "**تنظیم صدا:**\n"
+        "`.ویس‌صدا fa f`  ← فارسی / زن\n"
+        "`.ویس‌صدا fa m`  ← فارسی / مرد\n"
+        "`.ویس‌صدا en f`  ← انگلیسی آمریکا / زن\n"
+        "`.ویس‌صدا en m`  ← انگلیسی آمریکا / مرد\n"
+        "`.ویس‌صدا en-gb f`  ← انگلیسی بریتانیا\n"
+        "`.ویس‌صدا en-au m`  ← انگلیسی استرالیا\n"
+        "`.ویس‌صدا ar f`  ← عربی / زن\n\n"
+        f"🎙 صدای فعلی: {lang_lbl} — {gender_lbl}\n"
+        f"📝 تبدیل به متن (STT): {'✅ فعال' if has_key else '❌ نیاز به GROQ_API_KEY'}"
     )
     return txt, [[_b("» بازگشت", "menu", phone)]]
 
 
 def _sub_ai(phone):
-    has_key = bool(os.getenv("GROQ_API_KEY", ""))
-    status  = "✅ فعال (Llama 3.3 70B)" if has_key else "❌ نیاز به API Key"
+    has_key  = bool(os.getenv("GROQ_API_KEY", ""))
+    status   = "✅ فعال" if has_key else "❌ نیاز به API Key"
+    ai_name  = db.get(phone, "ai_name", "—")
+    hist_raw = db.get(phone, "ai_history", "[]")
+    try:
+        import json; hist_len = len(json.loads(hist_raw))
+    except: hist_len = 0
     txt = (
-        f"» هوش مصنوعی — {status}\n\n"
-        "`.هوش [سوال]`  /  `.ai`\n\n"
-        "مدل: Llama 3.3 70B (Groq — رایگان و سریع)\n\n"
-        "برای فعال‌سازی، توی Replit → Secrets اضافه کن:\n"
-        "کلید: GROQ_API_KEY\nمقدار: کلید رایگان از console.groq.com"
+        f"» هوش مصنوعی — {status}\n"
+        "مدل: Llama 3.3 70B (Groq)\n\n"
+        "`.هوش [سوال]`  ← پرسیدن سوال\n"
+        "`.هوش نام [اسمت]`  ← ذخیره اسم\n"
+        "`.هوش ریست`  ← پاک کردن حافظه\n\n"
+        f"👤 اسم ذخیره‌شده: {ai_name}\n"
+        f"🧠 پیام‌های در حافظه: {hist_len}\n\n"
+        "💡 هر اکانت حافظه مجزا داره — اطلاعات اکانت‌ها قاطی نمیشه\n\n"
+        "برای فعال‌سازی → Replit Secrets:\n"
+        "کلید: `GROQ_API_KEY` — رایگان از console.groq.com"
     )
     return txt, [[_b("» بازگشت", "menu", phone)]]
 
@@ -323,6 +380,7 @@ def register_callbacks(manager):
         elif action == "sub_sec":   t, kb = _sub_sec(phone);   await show(t, kb)
         elif action == "sub_seen":  t, kb = _sub_seen(phone);  await show(t, kb)
         elif action == "sub_techy": t, kb = _sub_techy(phone); await show(t, kb)
+        elif action == "sub_send":  t, kb = _sub_send(phone);  await show(t, kb)
         elif action == "sub_spam":  t, kb = _sub_spam(phone);  await show(t, kb)
         elif action == "sub_fmt":   t, kb = _sub_fmt(phone);   await show(t, kb)
         elif action == "sub_tts":   t, kb = _sub_tts(phone);   await show(t, kb)
