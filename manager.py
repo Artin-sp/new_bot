@@ -101,11 +101,11 @@ class Manager:
             await asyncio.sleep(interval)
 
     async def add_banner(self, acc, chat_id, source_chat, msg_id, interval, mode="copy"):
-        c = db.conn()
-        c.execute("INSERT INTO banners(phone,chat_id,source_chat,msg_id,interval_sec,mode)"
-                  " VALUES(?,?,?,?,?,?)",
-                  (acc.phone, str(chat_id), str(source_chat), msg_id, interval, mode))
-        row_id = c.lastrowid; c.commit(); c.close()
+        c   = db.conn()
+        cur = c.execute("INSERT INTO banners(phone,chat_id,source_chat,msg_id,interval_sec,mode)"
+                        " VALUES(?,?,?,?,?,?)",
+                        (acc.phone, str(chat_id), str(source_chat), msg_id, interval, mode))
+        row_id = cur.lastrowid; c.commit(); c.close()
         t = asyncio.create_task(
             self._banner_loop(acc, str(chat_id), str(source_chat), msg_id, interval, mode))
         acc.tasks[f"banner:{row_id}"] = t
@@ -148,10 +148,10 @@ class Manager:
 
     async def start_send(self, acc, chat_id: str, text: str, secs: int):
         await self.stop_send(acc, chat_id)
-        c = db.conn()
-        c.execute("INSERT INTO sends(phone,chat_id,message,interval_sec) VALUES(?,?,?,?)",
-                  (acc.phone, str(chat_id), text, secs))
-        row_id = c.lastrowid; c.commit(); c.close()
+        c   = db.conn()
+        cur = c.execute("INSERT INTO sends(phone,chat_id,message,interval_sec) VALUES(?,?,?,?)",
+                        (acc.phone, str(chat_id), text, secs))
+        row_id = cur.lastrowid; c.commit(); c.close()
         t = asyncio.create_task(self._send_loop(acc, row_id, chat_id, text, secs))
         acc.tasks[f"text:{chat_id}"] = t
 
