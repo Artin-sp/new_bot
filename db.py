@@ -2,11 +2,13 @@ import sqlite3
 
 DB = "userbot.db"
 
+
 def conn():
     c = sqlite3.connect(DB, check_same_thread=False)
     c.row_factory = sqlite3.Row
     c.execute("PRAGMA journal_mode=WAL")
     return c
+
 
 def init():
     c = conn()
@@ -25,14 +27,14 @@ def init():
         enabled INTEGER DEFAULT 1
     );
     CREATE TABLE IF NOT EXISTS banners(
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        phone       TEXT NOT NULL,
-        chat_id     TEXT NOT NULL,
-        source_chat TEXT NOT NULL,
-        msg_id      INTEGER NOT NULL,
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        phone        TEXT NOT NULL,
+        chat_id      TEXT NOT NULL,
+        source_chat  TEXT NOT NULL,
+        msg_id       INTEGER NOT NULL,
         interval_sec INTEGER NOT NULL,
-        mode        TEXT DEFAULT 'copy',
-        active      INTEGER DEFAULT 1
+        mode         TEXT DEFAULT 'copy',
+        active       INTEGER DEFAULT 1
     );
     CREATE TABLE IF NOT EXISTS sends(
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,9 +63,32 @@ def init():
         delay_sec    INTEGER NOT NULL DEFAULT 2,
         active       INTEGER DEFAULT 1
     );
+    CREATE TABLE IF NOT EXISTS pending_logins(
+        phone      TEXT PRIMARY KEY,
+        hash       TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS downloads(
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        phone      TEXT NOT NULL,
+        chat_id    TEXT NOT NULL,
+        chat_title TEXT DEFAULT '',
+        UNIQUE(phone, chat_id)
+    );
+    CREATE TABLE IF NOT EXISTS profile_spy(
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        phone      TEXT NOT NULL,
+        user_id    TEXT NOT NULL,
+        username   TEXT DEFAULT '',
+        name       TEXT DEFAULT '',
+        photo_hash TEXT DEFAULT 'none',
+        bio        TEXT DEFAULT '',
+        UNIQUE(phone, user_id)
+    );
     """)
     c.commit()
     c.close()
+
 
 def get(phone: str, key: str, default: str = "0") -> str:
     c = conn()
@@ -72,6 +97,7 @@ def get(phone: str, key: str, default: str = "0") -> str:
     ).fetchone()
     c.close()
     return row["value"] if row else default
+
 
 def put(phone: str, key: str, value: str):
     c = conn()
@@ -82,17 +108,20 @@ def put(phone: str, key: str, value: str):
     c.commit()
     c.close()
 
+
 def toggle(phone: str, key: str) -> str:
     cur = get(phone, key, "0")
     nv  = "0" if cur == "1" else "1"
     put(phone, key, nv)
     return nv
 
+
 def get_config(key: str, default: str = "") -> str:
     c = conn()
     row = c.execute("SELECT value FROM config WHERE key=?", (key,)).fetchone()
     c.close()
     return row["value"] if row else default
+
 
 def set_config(key: str, value: str):
     c = conn()
