@@ -38,6 +38,15 @@ VOICE_MAP = {
     ("ar",    "m"): "ar-SA-HamedNeural",
 }
 
+# Friendly aliases users type instead of the raw code (e.g. "persian" → "fa")
+LANG_ALIASES = {
+    "persian": "fa", "farsi": "fa", "فارسی": "fa", "fa-ir": "fa",
+    "english": "en", "en-us": "en",
+    "arabic": "ar", "عربی": "ar",
+    "british": "en-gb", "uk": "en-gb",
+    "australian": "en-au", "au": "en-au",
+}
+
 
 def _fmt(text: str, active: dict) -> str:
     t = _html.escape(text)
@@ -444,6 +453,7 @@ def register(client, acc, manager):
                pattern=r'^\.(?:ویس‌صدا|voiceset) (\S+)\s+(m|f)$'))
     async def _voiceset(event):
         lang   = event.pattern_match.group(1).strip().lower()
+        lang   = LANG_ALIASES.get(lang, lang)
         gender = event.pattern_match.group(2).strip().lower()
         await event.delete()
         if (lang, gender) not in VOICE_MAP:
