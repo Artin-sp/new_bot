@@ -1,0 +1,7 @@
+
+# Sensitive/local runtime state
+cred.env.txt
+sessions/*.session
+sessions/*.session-journal
+userbot.db
+*.env
