@@ -556,7 +556,7 @@ def register(client, acc, manager):
                 "Replit Secrets → GROQ_API_KEY\n\n"
                 "**یا OpenAI:**\nReplit Secrets → OPENAI_API_KEY"); return
 
-        import urllib.request, json
+        import requests, json
 
         # Load history
         try:
@@ -573,25 +573,23 @@ def register(client, acc, manager):
 
         try:
             if groq_key:
-                body = json.dumps({
-                    "model": "llama-3.3-70b-versatile",
-                    "messages": messages, "max_tokens": 800
-                }).encode()
-                req = urllib.request.Request(
-                    "https://api.groq.com/openai/v1/chat/completions", body,
-                    {"Content-Type":"application/json",
-                     "Authorization":f"Bearer {groq_key}"})
+                r = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Content-Type":"application/json",
+                             "Authorization":f"Bearer {groq_key}"},
+                    json={"model": "llama-3.3-70b-versatile",
+                          "messages": messages, "max_tokens": 800},
+                    timeout=30)
             else:
-                body = json.dumps({
-                    "model": "gpt-3.5-turbo",
-                    "messages": messages, "max_tokens": 800
-                }).encode()
-                req = urllib.request.Request(
-                    "https://api.openai.com/v1/chat/completions", body,
-                    {"Content-Type":"application/json",
-                     "Authorization":f"Bearer {openai_key}"})
-
-            res    = json.loads(urllib.request.urlopen(req, timeout=30).read())
+                r = requests.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Content-Type":"application/json",
+                             "Authorization":f"Bearer {openai_key}"},
+                    json={"model": "gpt-3.5-turbo",
+                          "messages": messages, "max_tokens": 800},
+                    timeout=30)
+            r.raise_for_status()
+            res    = r.json()
             answer = res["choices"][0]["message"]["content"].strip()
 
             # Update history (keep last 10 exchanges = 20 messages)
