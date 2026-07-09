@@ -599,7 +599,7 @@ def register(client, acc, manager):
                 history = history[-20:]
             db.put(acc.phone, "ai_history", json.dumps(history))
 
-            await client.send_message(event.chat_id, f"🤖 {answer}")
+            await client.send_message(event.chat_id, f"❓ {question}\n\n🤖 {answer}")
         except Exception as e:
             await client.send_message("me", f"❌ هوش مصنوعی: {e}")
 
