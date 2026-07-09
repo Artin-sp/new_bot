@@ -21,6 +21,9 @@ class CodeReq(BaseModel):   phone: str; code: str; pw: str = ""
 class TFAReq(BaseModel):    phone: str; pw: str
 class ClickReq(BaseModel):  phone: str; bot_username: str; pattern: str; remaining: int = -1; delay_sec: int = 2
 class SendReq(BaseModel):   phone: str; chat_id: str; message: str; interval_sec: int = 60
+class BannerEdit(BaseModel): chat_id: str; source_chat: str; msg_id: int; interval_sec: int; mode: str = "copy"
+class ReplyEdit(BaseModel):  keyword: str; reply: str; enabled: bool = True
+class ClickEdit(BaseModel):  bot_username: str; pattern: str; remaining: int = -1; delay_sec: int = 2
 
 @app.post("/api/login/code")
 async def send_code(r: PhoneReq):
@@ -56,10 +59,23 @@ async def tasks():
     out = []
     for r in rows:
         acc = mgr.accs.get(r["phone"])
-        out.append({"phone": r["phone"], "name": acc.name if acc else r["phone"],
+        out.append({"id": r["id"], "phone": r["phone"], "name": acc.name if acc else r["phone"],
                     "chat_id": r["chat_id"], "message": r["message"],
                     "interval_sec": r["interval_sec"]})
     return out
+
+@app.put("/api/tasks/{tid}")
+async def edit_task(tid: int, r: SendReq):
+    if r.phone not in mgr.accs:
+        raise HTTPException(400, "Account not connected")
+    chat = r.chat_id.strip()
+    if not chat:
+        raise HTTPException(400, "Chat ID is required")
+    try:
+        await mgr.edit_send(mgr.accs[r.phone], tid, chat, r.message, max(10, r.interval_sec))
+    except Exception as e:
+        raise HTTPException(404, str(e))
+    return {"ok": True}
 
 @app.post("/api/tasks")
 async def add_task(r: SendReq):
@@ -85,6 +101,19 @@ async def banners():
     rows = c.execute("SELECT * FROM banners WHERE active=1 ORDER BY id DESC").fetchall()
     c.close(); return [dict(r) for r in rows]
 
+@app.put("/api/banners/{bid}")
+async def edit_banner(bid: int, r: BannerEdit):
+    c = db.conn()
+    row = c.execute("SELECT phone FROM banners WHERE id=?", (bid,)).fetchone()
+    c.close()
+    if not row:
+        raise HTTPException(404, "Banner not found")
+    acc = mgr.accs.get(row["phone"])
+    if not acc:
+        raise HTTPException(400, "Account not connected")
+    await mgr.edit_banner(acc, bid, r.chat_id.strip(), r.source_chat.strip(), r.msg_id, max(10, r.interval_sec), r.mode)
+    return {"ok": True}
+
 @app.delete("/api/banners/{bid}")
 async def del_banner(bid: int):
     c = db.conn()
@@ -103,6 +132,16 @@ async def replies():
     c = db.conn()
     rows = c.execute("SELECT * FROM auto_replies ORDER BY id DESC").fetchall()
     c.close(); return [dict(r) for r in rows]
+
+@app.put("/api/replies/{rid}")
+async def edit_reply(rid: int, r: ReplyEdit):
+    c = db.conn()
+    row = c.execute("SELECT id FROM auto_replies WHERE id=?", (rid,)).fetchone()
+    if not row:
+        c.close(); raise HTTPException(404, "Reply rule not found")
+    c.execute("UPDATE auto_replies SET keyword=?, reply=?, enabled=? WHERE id=?",
+              (r.keyword.strip(), r.reply, 1 if r.enabled else 0, rid))
+    c.commit(); c.close(); return {"ok": True}
 
 @app.delete("/api/replies/{rid}")
 async def del_reply(rid: int):
@@ -132,6 +171,20 @@ async def add_click(r: ClickReq):
     )
     rule_id = cur.lastrowid; c.commit(); c.close()
     return {"ok": True, "id": rule_id}
+
+@app.put("/api/clicks/{cid}")
+async def edit_click(cid: int, r: ClickEdit):
+    c = db.conn()
+    row = c.execute("SELECT id FROM click_rules WHERE id=?", (cid,)).fetchone()
+    if not row:
+        c.close(); raise HTTPException(404, "Rule not found")
+    botname = r.bot_username.lstrip("@").lower().strip()
+    if not botname:
+        c.close(); raise HTTPException(400, "Bot username is required")
+    c.execute(
+        "UPDATE click_rules SET bot_username=?, pattern=?, remaining=?, delay_sec=? WHERE id=?",
+        (botname, r.pattern.strip(), r.remaining, max(1, r.delay_sec), cid))
+    c.commit(); c.close(); return {"ok": True}
 
 @app.delete("/api/clicks/{cid}")
 async def del_click(cid: int):

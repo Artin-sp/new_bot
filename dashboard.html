@@ -330,26 +330,74 @@ async function removeAcc(phone) {
 }
 
 // ── Sends tab ────────────────────────────────────────────────────────
+let _taskData = {};
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
 async function loadTasks() {
   const res = await fetch('/api/tasks');
   let tasks = await res.json();
   if (_filterPhone) tasks = tasks.filter(t => t.phone === _filterPhone);
+  _taskData = Object.fromEntries(tasks.map(t => [t.id, t]));
   const el = document.getElementById('tasks-list');
   if (!tasks.length) { el.innerHTML = '<div class="empty">No scheduled sends' + (_filterPhone ? ' for this account' : '') + '.</div>'; return; }
   el.innerHTML = tasks.map(t => `
-    <div class="card">
+    <div class="card" id="task-card-${t.id}">
       <div class="card-header">
         <div>
-          <strong>${_accLabel(t.phone)}</strong>
-          <span style="color:#8b949e;font-size:0.8rem;"> ${t.phone}</span>
-          → Chat <code>${t.chat_id}</code>
+          <strong>${esc(_accLabel(t.phone))}</strong>
+          <span style="color:#8b949e;font-size:0.8rem;"> ${esc(t.phone)}</span>
+          → Chat <code>${esc(t.chat_id)}</code>
         </div>
-        <button class="btn-danger" onclick="stopTask('${t.phone}','${t.chat_id}')">Stop</button>
+        <div class="actions" style="margin-top:0;">
+          <button class="btn-secondary" onclick="openTaskEdit(${t.id})">✏️ Edit</button>
+          <button class="btn-danger" onclick="stopTask('${t.phone}','${t.chat_id}')">Stop</button>
+        </div>
       </div>
       <div class="meta">Every ${fmtSecs(t.interval_sec)}</div>
-      <div style="margin-top:8px;font-size:0.85rem;color:#c9d1d9;white-space:pre-wrap;">${t.message}</div>
+      <div style="margin-top:8px;font-size:0.85rem;color:#c9d1d9;white-space:pre-wrap;">${esc(t.message)}</div>
+      <div id="task-edit-${t.id}"></div>
     </div>
   `).join('');
+}
+
+function openTaskEdit(id) {
+  const host = document.getElementById('task-edit-' + id);
+  if (!host) return;
+  if (host.innerHTML) { host.innerHTML = ''; return; }
+  const t = _taskData[id];
+  if (!t) return;
+  host.innerHTML = `
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #30363d;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        <div class="form-group" style="margin:0;">
+          <label>Chat ID or @username</label>
+          <input type="text" id="edit-task-chat-${t.id}" value="${esc(t.chat_id)}">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Interval (seconds)</label>
+          <input type="number" id="edit-task-interval-${t.id}" value="${t.interval_sec}" min="10">
+        </div>
+        <div class="form-group" style="margin:0;grid-column:1/-1;">
+          <label>Message</label>
+          <textarea id="edit-task-message-${t.id}" rows="2">${esc(t.message)}</textarea>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="saveTaskEdit(${t.id},'${t.phone}')">Save</button>
+      <button class="btn-secondary" onclick="openTaskEdit(${t.id})">Cancel</button>
+    </div>`;
+}
+
+async function saveTaskEdit(id, phone) {
+  const chat_id = document.getElementById('edit-task-chat-' + id).value.trim();
+  const message = document.getElementById('edit-task-message-' + id).value;
+  const interval_sec = parseInt(document.getElementById('edit-task-interval-' + id).value) || 60;
+  const res = await fetch('/api/tasks/' + id, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({phone, chat_id, message, interval_sec})
+  });
+  const data = await res.json();
+  if (res.ok && data.ok) { toast('✅ Send updated'); loadTasks(); }
+  else { toast('❌ ' + (data.detail || 'Error'), false); }
 }
 
 async function stopTask(phone, chat_id) {
@@ -386,23 +434,29 @@ async function addSend() {
 }
 
 // ── Banners tab ──────────────────────────────────────────────────────
+let _bannerData = {};
 async function loadBanners() {
   const res = await fetch('/api/banners');
   let banners = await res.json();
   if (_filterPhone) banners = banners.filter(b => b.phone === _filterPhone);
+  _bannerData = Object.fromEntries(banners.map(b => [b.id, b]));
   const el = document.getElementById('banners-list');
   if (!banners.length) { el.innerHTML = '<div class="empty">No active banners' + (_filterPhone ? ' for this account' : '') + '.</div>'; return; }
   el.innerHTML = banners.map(b => `
-    <div class="card">
+    <div class="card" id="banner-card-${b.id}">
       <div class="card-header">
         <div>
-          <strong>${_accLabel(b.phone)}</strong>
-          <span style="color:#8b949e;font-size:0.8rem;"> ${b.phone}</span>
-          → Chat <code>${b.chat_id}</code>
+          <strong>${esc(_accLabel(b.phone))}</strong>
+          <span style="color:#8b949e;font-size:0.8rem;"> ${esc(b.phone)}</span>
+          → Chat <code>${esc(b.chat_id)}</code>
         </div>
-        <button class="btn-danger" onclick="delBanner(${b.id})">Stop</button>
+        <div class="actions" style="margin-top:0;">
+          <button class="btn-secondary" onclick="openBannerEdit(${b.id})">✏️ Edit</button>
+          <button class="btn-danger" onclick="delBanner(${b.id})">Stop</button>
+        </div>
       </div>
-      <div class="meta">Source: ${b.source_chat} · Msg ID: ${b.msg_id} · Interval: ${fmtSecs(b.interval_sec)} · Mode: ${b.mode}</div>
+      <div class="meta">Source: ${esc(b.source_chat)} · Msg ID: ${b.msg_id} · Interval: ${fmtSecs(b.interval_sec)} · Mode: ${esc(b.mode)}</div>
+      <div id="banner-edit-${b.id}"></div>
     </div>
   `).join('');
 }
@@ -412,24 +466,83 @@ async function delBanner(bid) {
   toast('Banner stopped'); loadBanners();
 }
 
+function openBannerEdit(id) {
+  const host = document.getElementById('banner-edit-' + id);
+  if (!host) return;
+  if (host.innerHTML) { host.innerHTML = ''; return; }
+  const b = _bannerData[id];
+  if (!b) return;
+  host.innerHTML = `
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #30363d;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        <div class="form-group" style="margin:0;">
+          <label>Target Chat ID</label>
+          <input type="text" id="edit-banner-chat-${b.id}" value="${esc(b.chat_id)}">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Source Chat ID</label>
+          <input type="text" id="edit-banner-source-${b.id}" value="${esc(b.source_chat)}">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Message ID</label>
+          <input type="number" id="edit-banner-msgid-${b.id}" value="${b.msg_id}">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Interval (seconds)</label>
+          <input type="number" id="edit-banner-interval-${b.id}" value="${b.interval_sec}" min="10">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Mode</label>
+          <select id="edit-banner-mode-${b.id}">
+            <option value="copy" ${b.mode==='copy'?'selected':''}>copy</option>
+            <option value="fwd" ${b.mode==='fwd'?'selected':''}>forward</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="saveBannerEdit(${b.id})">Save</button>
+      <button class="btn-secondary" onclick="openBannerEdit(${b.id})">Cancel</button>
+    </div>`;
+}
+
+async function saveBannerEdit(id) {
+  const chat_id = document.getElementById('edit-banner-chat-' + id).value.trim();
+  const source_chat = document.getElementById('edit-banner-source-' + id).value.trim();
+  const msg_id = parseInt(document.getElementById('edit-banner-msgid-' + id).value);
+  const interval_sec = parseInt(document.getElementById('edit-banner-interval-' + id).value) || 60;
+  const mode = document.getElementById('edit-banner-mode-' + id).value;
+  const res = await fetch('/api/banners/' + id, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({chat_id, source_chat, msg_id, interval_sec, mode})
+  });
+  const data = await res.json();
+  if (res.ok && data.ok) { toast('✅ Banner updated'); loadBanners(); }
+  else { toast('❌ ' + (data.detail || 'Error'), false); }
+}
+
 // ── Replies tab ──────────────────────────────────────────────────────
+let _replyData = {};
 async function loadReplies() {
   const res = await fetch('/api/replies');
   let replies = await res.json();
   if (_filterPhone) replies = replies.filter(r => r.phone === _filterPhone);
+  _replyData = Object.fromEntries(replies.map(r => [r.id, r]));
   const el = document.getElementById('replies-list');
   if (!replies.length) { el.innerHTML = '<div class="empty">No auto-reply rules' + (_filterPhone ? ' for this account' : '') + '.</div>'; return; }
   el.innerHTML = replies.map(r => `
-    <div class="card">
+    <div class="card" id="reply-card-${r.id}">
       <div class="card-header">
         <div>
-          <strong>${_accLabel(r.phone)}</strong>
-          <span style="color:#8b949e;font-size:0.8rem;"> ${r.phone}</span>
-          &nbsp; keyword: <code>${r.keyword}</code>
+          <strong>${esc(_accLabel(r.phone))}</strong>
+          <span style="color:#8b949e;font-size:0.8rem;"> ${esc(r.phone)}</span>
+          &nbsp; keyword: <code>${esc(r.keyword)}</code>
         </div>
-        <button class="btn-danger" onclick="delReply(${r.id})">Delete</button>
+        <div class="actions" style="margin-top:0;">
+          <button class="btn-secondary" onclick="openReplyEdit(${r.id})">✏️ Edit</button>
+          <button class="btn-danger" onclick="delReply(${r.id})">Delete</button>
+        </div>
       </div>
-      <div class="meta">Reply: ${r.reply} &nbsp;·&nbsp; <span class="badge ${r.enabled ? 'badge-green' : 'badge-gray'}">${r.enabled ? 'Enabled' : 'Disabled'}</span></div>
+      <div class="meta">Reply: ${esc(r.reply)} &nbsp;·&nbsp; <span class="badge ${r.enabled ? 'badge-green' : 'badge-gray'}">${r.enabled ? 'Enabled' : 'Disabled'}</span></div>
+      <div id="reply-edit-${r.id}"></div>
     </div>
   `).join('');
 }
@@ -439,28 +552,77 @@ async function delReply(rid) {
   toast('Reply rule deleted'); loadReplies();
 }
 
+function openReplyEdit(id) {
+  const host = document.getElementById('reply-edit-' + id);
+  if (!host) return;
+  if (host.innerHTML) { host.innerHTML = ''; return; }
+  const r = _replyData[id];
+  if (!r) return;
+  host.innerHTML = `
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #30363d;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        <div class="form-group" style="margin:0;">
+          <label>Keyword</label>
+          <input type="text" id="edit-reply-keyword-${r.id}" value="${esc(r.keyword)}">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Enabled</label>
+          <select id="edit-reply-enabled-${r.id}">
+            <option value="1" ${r.enabled?'selected':''}>Enabled</option>
+            <option value="0" ${!r.enabled?'selected':''}>Disabled</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin:0;grid-column:1/-1;">
+          <label>Reply</label>
+          <textarea id="edit-reply-text-${r.id}" rows="2">${esc(r.reply)}</textarea>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="saveReplyEdit(${r.id})">Save</button>
+      <button class="btn-secondary" onclick="openReplyEdit(${r.id})">Cancel</button>
+    </div>`;
+}
+
+async function saveReplyEdit(id) {
+  const keyword = document.getElementById('edit-reply-keyword-' + id).value.trim();
+  const reply = document.getElementById('edit-reply-text-' + id).value;
+  const enabled = document.getElementById('edit-reply-enabled-' + id).value === '1';
+  const res = await fetch('/api/replies/' + id, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({keyword, reply, enabled})
+  });
+  const data = await res.json();
+  if (res.ok && data.ok) { toast('✅ Rule updated'); loadReplies(); }
+  else { toast('❌ ' + (data.detail || 'Error'), false); }
+}
+
 // ── Auto-Clicker tab ─────────────────────────────────────────────────
+let _clickData = {};
 async function loadClicks() {
   const res = await fetch('/api/clicks');
   let clicks = await res.json();
   if (_filterPhone) clicks = clicks.filter(c => c.phone === _filterPhone);
+  _clickData = Object.fromEntries(clicks.map(c => [c.id, c]));
   const el = document.getElementById('clicks-list');
   if (!clicks.length) { el.innerHTML = '<div class="empty">No active auto-clicker rules' + (_filterPhone ? ' for this account' : '') + '.</div>'; return; }
   el.innerHTML = clicks.map(c => `
-    <div class="card">
+    <div class="card" id="click-card-${c.id}">
       <div class="card-header">
         <div>
-          <strong>${_accLabel(c.phone)}</strong>
-          <span style="color:#8b949e;font-size:0.8rem;"> ${c.phone}</span>
-          → @${c.bot_username}
+          <strong>${esc(_accLabel(c.phone))}</strong>
+          <span style="color:#8b949e;font-size:0.8rem;"> ${esc(c.phone)}</span>
+          → @${esc(c.bot_username)}
         </div>
-        <button class="btn-danger" onclick="delClick(${c.id})">Delete</button>
+        <div class="actions" style="margin-top:0;">
+          <button class="btn-secondary" onclick="openClickEdit(${c.id})">✏️ Edit</button>
+          <button class="btn-danger" onclick="delClick(${c.id})">Delete</button>
+        </div>
       </div>
       <div class="meta">
-        Pattern: <code>${c.pattern}</code>
+        Pattern: <code>${esc(c.pattern)}</code>
         &nbsp;·&nbsp; Delay: ${c.delay_sec}s
         &nbsp;·&nbsp; Remaining: <strong style="color:${c.remaining < 0 ? '#56d364' : '#f0883e'}">${c.remaining < 0 ? '∞ unlimited' : c.remaining}</strong>
       </div>
+      <div id="click-edit-${c.id}"></div>
     </div>
   `).join('');
 }
@@ -468,6 +630,51 @@ async function loadClicks() {
 async function delClick(cid) {
   await fetch('/api/clicks/' + cid, {method:'DELETE'});
   toast('Clicker rule deleted'); loadClicks();
+}
+
+function openClickEdit(id) {
+  const host = document.getElementById('click-edit-' + id);
+  if (!host) return;
+  if (host.innerHTML) { host.innerHTML = ''; return; }
+  const c = _clickData[id];
+  if (!c) return;
+  host.innerHTML = `
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #30363d;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        <div class="form-group" style="margin:0;">
+          <label>Bot @username</label>
+          <input type="text" id="edit-click-bot-${c.id}" value="${esc(c.bot_username)}">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Button Pattern</label>
+          <input type="text" id="edit-click-pattern-${c.id}" value="${esc(c.pattern)}">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Delay (seconds)</label>
+          <input type="number" id="edit-click-delay-${c.id}" value="${c.delay_sec}" min="1">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Remaining (-1 = unlimited)</label>
+          <input type="number" id="edit-click-remaining-${c.id}" value="${c.remaining}">
+        </div>
+      </div>
+      <button class="btn-primary" onclick="saveClickEdit(${c.id})">Save</button>
+      <button class="btn-secondary" onclick="openClickEdit(${c.id})">Cancel</button>
+    </div>`;
+}
+
+async function saveClickEdit(id) {
+  const bot_username = document.getElementById('edit-click-bot-' + id).value.trim();
+  const pattern = document.getElementById('edit-click-pattern-' + id).value.trim();
+  const delay_sec = parseInt(document.getElementById('edit-click-delay-' + id).value) || 2;
+  const remaining = parseInt(document.getElementById('edit-click-remaining-' + id).value);
+  const res = await fetch('/api/clicks/' + id, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({bot_username, pattern, remaining: isNaN(remaining) ? -1 : remaining, delay_sec})
+  });
+  const data = await res.json();
+  if (res.ok && data.ok) { toast('✅ Rule updated'); loadClicks(); }
+  else { toast('❌ ' + (data.detail || 'Error'), false); }
 }
 
 async function addClick() {

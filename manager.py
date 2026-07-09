@@ -120,6 +120,19 @@ class Manager:
             self._banner_loop(acc, str(chat_id), str(source_chat), msg_id, interval, mode))
         acc.tasks[f"banner:{row_id}"] = t
 
+    async def edit_banner(self, acc, bid: int, chat_id, source_chat, msg_id, interval, mode):
+        key = f"banner:{bid}"
+        if key in acc.tasks:
+            acc.tasks[key].cancel(); del acc.tasks[key]
+        c = db.conn()
+        c.execute(
+            "UPDATE banners SET chat_id=?, source_chat=?, msg_id=?, interval_sec=?, mode=? WHERE id=?",
+            (str(chat_id), str(source_chat), msg_id, interval, mode, bid))
+        c.commit(); c.close()
+        t = asyncio.create_task(
+            self._banner_loop(acc, str(chat_id), str(source_chat), msg_id, interval, mode))
+        acc.tasks[key] = t
+
     async def clear_banners(self, acc, chat_id=None):
         c = db.conn()
         if chat_id:
@@ -173,6 +186,24 @@ class Manager:
         t = asyncio.create_task(self._send_loop(acc, row_id, str(chat_id), text, secs))
         acc.tasks[f"text:{chat_id}:{row_id}"] = t
         return row_id
+
+    async def edit_send(self, acc, send_id: int, chat_id: str, text: str, secs: int):
+        c = db.conn()
+        row = c.execute(
+            "SELECT id FROM sends WHERE id=? AND phone=? AND active=1", (send_id, acc.phone)
+        ).fetchone()
+        if not row:
+            c.close()
+            raise Exception("Send not found for this account")
+        old_keys = [k for k in list(acc.tasks) if k.endswith(f":{send_id}") and k.startswith("text:")]
+        for k in old_keys:
+            acc.tasks[k].cancel(); del acc.tasks[k]
+        c.execute(
+            "UPDATE sends SET chat_id=?, message=?, interval_sec=? WHERE id=? AND phone=?",
+            (str(chat_id), text, secs, send_id, acc.phone))
+        c.commit(); c.close()
+        t = asyncio.create_task(self._send_loop(acc, send_id, str(chat_id), text, secs))
+        acc.tasks[f"text:{chat_id}:{send_id}"] = t
 
     async def stop_send(self, acc, chat_id: str):
         keys = [k for k in list(acc.tasks) if k.startswith(f"text:{chat_id}:")]
