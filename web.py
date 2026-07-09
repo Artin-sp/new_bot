@@ -198,7 +198,7 @@ async def git_push():
     if not token:
         raise HTTPException(400, "GITHUB_TOKEN secret is not set")
     def _push():
-        remote_url = f"https://{token}@github.com/Artin-sp/new_bot.git"
+        remote_url = f"https://x-access-token:{token}@github.com/Artin-sp/new_bot.git"
         cmds = [
             ["git", "config", "user.email", "bot@replit.com"],
             ["git", "config", "user.name", "Replit Bot"],
@@ -206,9 +206,11 @@ async def git_push():
             ["git", "commit", "-m", "Auto-push from dashboard", "--allow-empty"],
             ["git", "push", remote_url, "HEAD:main", "--force"],
         ]
+        env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
         log = []
         for cmd in cmds:
-            r = subprocess.run(cmd, capture_output=True, text=True, cwd="/home/runner/workspace")
+            r = subprocess.run(cmd, capture_output=True, text=True, cwd="/home/runner/workspace",
+                                env=env, stdin=subprocess.DEVNULL, timeout=60)
             log.append((r.stdout + r.stderr).strip())
         return "\n".join(l for l in log if l)
     try:
