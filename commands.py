@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 from telethon import events
 from telethon.errors import FloodWaitError
 from telethon.tl.functions.messages import SendMediaRequest
-from telethon.tl.types import InputMediaDice
+from telethon.tl.types import InputMediaDice, MessageMediaPhoto, MessageMediaDocument
 import db
 
 TEHRAN = timezone(timedelta(hours=3, minutes=30))
@@ -23,6 +23,20 @@ LUCK_MSGS = [
     "امروز روز خوبیه برای تصمیم‌های مهم ✅",
     "امروز یکم استراحت بیشتری بکن 😌",
 ]
+
+# edge_tts voice map: (lang, gender) → voice name
+VOICE_MAP = {
+    ("fa",    "f"): "fa-IR-DilaraNeural",
+    ("fa",    "m"): "fa-IR-FaridNeural",
+    ("en",    "f"): "en-US-JennyNeural",
+    ("en",    "m"): "en-US-GuyNeural",
+    ("en-gb", "f"): "en-GB-SoniaNeural",
+    ("en-gb", "m"): "en-GB-RyanNeural",
+    ("en-au", "f"): "en-AU-NatashaNeural",
+    ("en-au", "m"): "en-AU-WilliamNeural",
+    ("ar",    "f"): "ar-SA-ZariyahNeural",
+    ("ar",    "m"): "ar-SA-HamedNeural",
+}
 
 
 def _fmt(text: str, active: dict) -> str:
@@ -49,7 +63,7 @@ def register(client, acc, manager):
         await panel.open_panel(event.chat_id, acc.phone, manager)
 
     # ══════════════════════════════════════════════════════════════
-    #  ارسال زمان‌بندی / send  — multiple per chat now supported
+    #  ارسال زمان‌بندی / send
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:send|ارسال) (.+?) (\d+)$'))
     async def _send(event):
@@ -61,8 +75,7 @@ def register(client, acc, manager):
         rid = await manager.start_send(acc, str(event.chat_id), text, secs)
         await client.send_message("me",
             f"✅ ارسال شروع شد (بعد ری‌استارت هم میمونه)\n"
-            f"📍 {title}\n💬 `{text}`\n⏱ هر {secs} ثانیه\n🔢 آیدی: {rid}"
-        )
+            f"📍 {title}\n💬 `{text}`\n⏱ هر {secs} ثانیه\n🔢 آیدی: {rid}")
 
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:stop|توقف)$'))
     async def _stop(event):
@@ -70,7 +83,7 @@ def register(client, acc, manager):
         chat  = await event.get_chat()
         title = getattr(chat, 'title', None) or getattr(chat, 'first_name', cid)
         await event.delete()
-        keys  = [k for k in acc.tasks if k.startswith(f"text:{cid}:")]
+        keys = [k for k in acc.tasks if k.startswith(f"text:{cid}:")]
         if keys:
             await manager.stop_send(acc, cid)
             await client.send_message("me", f"⏹ {len(keys)} ارسال در **{title}** متوقف شد")
@@ -98,7 +111,7 @@ def register(client, acc, manager):
         await client.send_message("me", "\n".join(lines))
 
     # ══════════════════════════════════════════════════════════════
-    #  تیچی / بنر / banner
+    #  تیچی / بنر
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True,
                pattern=r'^\.(?:تنظیم بنر|setbanner) (\d+)(?: (کپی|فور|copy|fwd))?$'))
@@ -152,7 +165,7 @@ def register(client, acc, manager):
         await client.send_message("me", "♻️ همه بنرها پاک شدن")
 
     # ══════════════════════════════════════════════════════════════
-    #  پاسخ خودکار / auto-reply
+    #  پاسخ خودکار
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True,
                pattern=r'^\.(?:افزودن پاسخ|addreply) (.+?) = (.+)$'))
@@ -201,7 +214,7 @@ def register(client, acc, manager):
         await client.send_message("me", "♻️ همه پاسخ‌ها پاک شدن")
 
     # ══════════════════════════════════════════════════════════════
-    #  منشی / secretary
+    #  منشی
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:متن منشی|sectext) (.+)$'))
     async def _sec_text(event):
@@ -218,7 +231,7 @@ def register(client, acc, manager):
         await client.send_message("me", f"✅ تایم منشی: {t} ثانیه")
 
     # ══════════════════════════════════════════════════════════════
-    #  اسپم / spam
+    #  اسپم
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True,
                pattern=r'^\.(?:اسپم|spam)(?: (سریع|آرام|fast|slow))? (\d+) (.+)$'))
@@ -252,7 +265,7 @@ def register(client, acc, manager):
         await client.send_message("me", "⏹ اسپم متوقف شد")
 
     # ══════════════════════════════════════════════════════════════
-    #  👻 حالت ناپدید / ghost mode  (NEW)
+    #  👻 ناپدید / ghost
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True,
                pattern=r'^\.(?:ghost|ناپدید) (on|off|روشن|خاموش)$'))
@@ -264,15 +277,15 @@ def register(client, acc, manager):
             await manager.start_ghost(acc)
             await client.send_message("me",
                 "👻 **حالت ناپدید: روشن**\n"
-                "حسابت آفلاین به نظر میرسه — هر ۵ ثانیه status آفلاین ارسال میشه\n"
+                "هر ۳ ثانیه status آفلاین ارسال میشه\n"
+                "بعد هر پیام خروجی هم بلافاصله آفلاین ست میشه\n"
                 "برای خاموش کردن: `.ghost off`")
         else:
             await manager.stop_ghost(acc)
-            await client.send_message("me", "👻 **حالت ناپدید: خاموش**\nحسابت دوباره آنلاینه")
+            await client.send_message("me", "👻 **حالت ناپدید: خاموش**")
 
     # ══════════════════════════════════════════════════════════════
-    #  📥 دانلودر / downloader  (NEW)
-    #  هر مدیایی که توی یه چت مشخص بیاد → forward به Saved Messages
+    #  📥 دانلودر
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True,
                pattern=r'^\.(?:دانلود|dl|download) (.+)$'))
@@ -290,10 +303,8 @@ def register(client, acc, manager):
                   (acc.phone, cid, title))
         c.commit(); c.close()
         await client.send_message("me",
-            f"📥 **دانلودر روشن شد**\n"
-            f"چت: **{title}**\n"
-            f"هر مدیایی که بیاد به Saved Messages فوروارد میشه\n"
-            f"برای خاموش کردن: `.پایان دانلود {target}`")
+            f"📥 **دانلودر روشن شد**\nچت: **{title}**\n"
+            f"هر مدیایی که بیاد به Saved Messages فوروارد میشه")
 
     @client.on(events.NewMessage(outgoing=True,
                pattern=r'^\.(?:پایان دانلود|stopdl|stopdownload)(?:\s+(.+))?$'))
@@ -324,7 +335,7 @@ def register(client, acc, manager):
         await client.send_message("me", "\n".join(lines))
 
     # ══════════════════════════════════════════════════════════════
-    #  👁 فضول‌پروفایل / profile spy  (NEW)
+    #  👁 جاسوس پروفایل
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True,
                pattern=r'^\.(?:spy|جاسوس) (@?\S+)$'))
@@ -333,13 +344,13 @@ def register(client, acc, manager):
         await event.delete()
         try:
             from telethon.tl.functions.users import GetFullUserRequest
-            entity  = await client.get_entity(target)
-            uid     = str(entity.id)
-            name    = ((getattr(entity, "first_name", "") or "") + " " +
-                       (getattr(entity, "last_name",  "") or "")).strip()
-            uname   = getattr(entity, "username", "") or ""
-            photos  = await client.get_profile_photos(entity, limit=1)
-            photo   = str(photos[0].id) if photos else "none"
+            entity = await client.get_entity(target)
+            uid    = str(entity.id)
+            name   = ((getattr(entity, "first_name", "") or "") + " " +
+                      (getattr(entity, "last_name",  "") or "")).strip()
+            uname  = getattr(entity, "username", "") or ""
+            photos = await client.get_profile_photos(entity, limit=1)
+            photo  = str(photos[0].id) if photos else "none"
             try:
                 full = await client(GetFullUserRequest(entity))
                 bio  = getattr(full.full_user, "about", "") or ""
@@ -347,7 +358,6 @@ def register(client, acc, manager):
                 bio  = ""
         except Exception as e:
             await client.send_message("me", f"❌ یوزر پیدا نشد: {e}"); return
-
         c = db.conn()
         c.execute("""INSERT OR REPLACE INTO profile_spy
                      (phone,user_id,username,name,photo_hash,bio)
@@ -355,11 +365,8 @@ def register(client, acc, manager):
                   (acc.phone, uid, uname, name, photo, bio))
         c.commit(); c.close()
         await client.send_message("me",
-            f"👁 **جاسوسی شروع شد**\n"
-            f"نام: {name or '—'}\n"
-            f"یوزرنیم: @{uname or '—'}\n\n"
-            f"هر ۵ دقیقه چک میشه — اگه چیزی تغییر کرد بهت خبر میدم\n"
-            f"برای توقف: `.unspy @{uname}`")
+            f"👁 **جاسوسی شروع شد**\nنام: {name or '—'}\nیوزرنیم: @{uname or '—'}\n\n"
+            f"هر ۵ دقیقه چک میشه\nبرای توقف: `.unspy @{uname}`")
 
     @client.on(events.NewMessage(outgoing=True,
                pattern=r'^\.(?:unspy|پایان جاسوس) (@?\S+)$'))
@@ -386,8 +393,7 @@ def register(client, acc, manager):
         await client.send_message("me", "\n".join(lines))
 
     # ══════════════════════════════════════════════════════════════
-    #  🎵 موزیک به ویس / music to voice  (NEW)
-    #  روی هر فایل صوتی/موزیک ریپلای کن و `.mv` بزن
+    #  🎵 موزیک به ویس
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True,
                pattern=r'^\.(?:mv|موزیک ویس|musicvoice)$'))
@@ -415,12 +421,11 @@ def register(client, acc, manager):
                 except: pass
 
     # ══════════════════════════════════════════════════════════════
-    #  ویس (TTS) / voice — bilingual auto-detect
+    #  🎙 ویس (TTS) — now uses edge_tts with voice settings
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:ویس|voice)\s+(.+)$'))
     async def _voice_text(event):
-        text = event.pattern_match.group(1).strip()
-        await _tts(event, text)
+        await _tts(event, event.pattern_match.group(1).strip())
 
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:ویس|voice)$'))
     async def _voice_reply(event):
@@ -434,15 +439,37 @@ def register(client, acc, manager):
             await client.send_message("me", "❌ پیام ریپلای شده متن نداره"); return
         await _tts(event, reply.text)
 
+    # تنظیم صدا / voice settings: .ویس‌صدا [lang] [m/f]
+    @client.on(events.NewMessage(outgoing=True,
+               pattern=r'^\.(?:ویس‌صدا|voiceset) (\S+)\s+(m|f)$'))
+    async def _voiceset(event):
+        lang   = event.pattern_match.group(1).strip().lower()
+        gender = event.pattern_match.group(2).strip().lower()
+        await event.delete()
+        if (lang, gender) not in VOICE_MAP:
+            valid = ", ".join(f"{l} {g}" for l, g in VOICE_MAP)
+            await client.send_message("me",
+                f"❌ ترکیب نامعتبر\nگزینه‌های معتبر:\n{valid}"); return
+        db.put(acc.phone, "tts_lang",   lang)
+        db.put(acc.phone, "tts_gender", gender)
+        voice = VOICE_MAP[(lang, gender)]
+        await client.send_message("me", f"✅ صدا تنظیم شد: `{voice}`")
+
     async def _tts(event, text):
         await event.delete()
+        lang   = db.get(acc.phone, "tts_lang",   "auto")
+        gender = db.get(acc.phone, "tts_gender", "f")
+        # auto-detect language
+        if lang == "auto":
+            lang = "fa" if any('\u0600' <= ch <= '\u06FF' for ch in text) else "en"
+        voice = VOICE_MAP.get((lang, gender), "fa-IR-DilaraNeural")
         fd = tmp = None
         try:
-            from gtts import gTTS
-            lang = "fa" if any('\u0600' <= ch <= '\u06FF' for ch in text) else "en"
+            import edge_tts
             fd, tmp = tempfile.mkstemp(suffix=".mp3")
             os.close(fd); fd = None
-            gTTS(text=text, lang=lang).save(tmp)
+            communicate = edge_tts.Communicate(text, voice)
+            await communicate.save(tmp)
             await client.send_file(event.chat_id, tmp, voice_note=True, caption="")
         except Exception as e:
             await client.send_message("me", f"❌ ویس: {e}")
@@ -455,38 +482,121 @@ def register(client, acc, manager):
                 except: pass
 
     # ══════════════════════════════════════════════════════════════
-    #  هوش مصنوعی / AI
+    #  📝 تبدیل ویس به متن (STT) — GROQ Whisper
+    # ══════════════════════════════════════════════════════════════
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:متن|totext|stt)$'))
+    async def _stt(event):
+        await event.delete()
+        if not event.is_reply:
+            await client.send_message("me", "❌ روی یه پیام صوتی ریپلای کن"); return
+        reply = await event.get_reply_message()
+        if not (reply.voice or reply.audio):
+            await client.send_message("me", "❌ پیامی که ریپلای کردی صوتی نیست"); return
+        key = os.getenv("GROQ_API_KEY", "")
+        if not key:
+            await client.send_message("me",
+                "❌ نیاز به GROQ_API_KEY\nرایگان از console.groq.com"); return
+        tmp = None
+        try:
+            import requests
+            tmp = await client.download_media(reply)
+            if not tmp:
+                await client.send_message("me", "❌ دانلود ناموفق"); return
+            with open(tmp, "rb") as f:
+                res = requests.post(
+                    "https://api.groq.com/openai/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {key}"},
+                    files={"file": ("audio.ogg", f, "audio/ogg")},
+                    data={"model": "whisper-large-v3"},
+                    timeout=60)
+            res.raise_for_status()
+            text = res.json().get("text", "").strip()
+            await client.send_message(event.chat_id, f"📝 {text}" if text else "متنی پیدا نشد")
+        except Exception as e:
+            await client.send_message("me", f"❌ تبدیل به متن: {e}")
+        finally:
+            if tmp and os.path.exists(tmp):
+                try: os.unlink(tmp)
+                except: pass
+
+    # ══════════════════════════════════════════════════════════════
+    #  🤖 هوش مصنوعی — GROQ primary, OPENAI fallback
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:هوش|ai) (.+)$'))
     async def _ai(event):
         question = event.pattern_match.group(1).strip()
         await event.delete()
-        key = os.getenv("OPENAI_API_KEY", "")
-        if not key:
+
+        # Special sub-commands
+        if question.startswith("نام "):
+            name = question[4:].strip()
+            db.put(acc.phone, "ai_name", name)
+            await client.send_message("me", f"✅ اسمت ذخیره شد: {name}"); return
+        if question.strip() == "ریست":
+            db.put(acc.phone, "ai_history", "[]")
+            await client.send_message("me", "🧠 حافظه هوش مصنوعی پاک شد"); return
+
+        groq_key  = os.getenv("GROQ_API_KEY", "")
+        openai_key = os.getenv("OPENAI_API_KEY", "")
+        if not groq_key and not openai_key:
             await client.send_message("me",
-                "❌ نیاز به OPENAI_API_KEY\n"
-                "توی Replit → Secrets اضافه کن:\nکلید: OPENAI_API_KEY"); return
+                "❌ نیاز به API Key\n\n"
+                "**گزینه رایگان (توصیه‌شده):**\n"
+                "از console.groq.com کلید بگیر\n"
+                "Replit Secrets → GROQ_API_KEY\n\n"
+                "**یا OpenAI:**\nReplit Secrets → OPENAI_API_KEY"); return
+
+        import urllib.request, json
+
+        # Load history
         try:
-            import urllib.request, json
-            body = json.dumps({
-                "model": "gpt-3.5-turbo",
-                "messages": [
-                    {"role":"system","content":"Reply in the same language as the user. Be concise."},
-                    {"role":"user","content":question}
-                ],
-                "max_tokens": 800
-            }).encode()
-            req = urllib.request.Request(
-                "https://api.openai.com/v1/chat/completions", body,
-                {"Content-Type":"application/json","Authorization":f"Bearer {key}"})
+            history = json.loads(db.get(acc.phone, "ai_history", "[]"))
+        except Exception:
+            history = []
+
+        ai_name = db.get(acc.phone, "ai_name", "")
+        system  = (f"You are a helpful assistant"
+                   f"{f', talking to {ai_name}' if ai_name else ''}. "
+                   f"Reply in the same language as the user. Be concise.")
+        messages = [{"role":"system","content":system}] + history + \
+                   [{"role":"user","content":question}]
+
+        try:
+            if groq_key:
+                body = json.dumps({
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": messages, "max_tokens": 800
+                }).encode()
+                req = urllib.request.Request(
+                    "https://api.groq.com/openai/v1/chat/completions", body,
+                    {"Content-Type":"application/json",
+                     "Authorization":f"Bearer {groq_key}"})
+            else:
+                body = json.dumps({
+                    "model": "gpt-3.5-turbo",
+                    "messages": messages, "max_tokens": 800
+                }).encode()
+                req = urllib.request.Request(
+                    "https://api.openai.com/v1/chat/completions", body,
+                    {"Content-Type":"application/json",
+                     "Authorization":f"Bearer {openai_key}"})
+
             res    = json.loads(urllib.request.urlopen(req, timeout=30).read())
             answer = res["choices"][0]["message"]["content"].strip()
+
+            # Update history (keep last 10 exchanges = 20 messages)
+            history.extend([{"role":"user","content":question},
+                            {"role":"assistant","content":answer}])
+            if len(history) > 20:
+                history = history[-20:]
+            db.put(acc.phone, "ai_history", json.dumps(history))
+
             await client.send_message(event.chat_id, f"🤖 {answer}")
         except Exception as e:
             await client.send_message("me", f"❌ هوش مصنوعی: {e}")
 
     # ══════════════════════════════════════════════════════════════
-    #  ترجمه / translate
+    #  ترجمه
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:ترجمه|translate) (.+)$'))
     async def _translate(event):
@@ -503,39 +613,30 @@ def register(client, acc, manager):
             await client.send_message("me", f"❌ ترجمه: {e}")
 
     # ══════════════════════════════════════════════════════════════
-    #  قیمت ارز / price — FIXED: Nobitex with UA + CoinGecko fallback
+    #  قیمت — Nobitex + CoinGecko fallback
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:قیمت|price)$'))
     async def _price(event):
         await event.delete()
         try:
             import urllib.request, json
-
             lines = ["💱 **قیمت لحظه‌ای**\n"]
             success = False
-
-            # ── Primary: Nobitex (real Iranian exchange prices) ───
             try:
                 req = urllib.request.Request(
                     "https://api.nobitex.ir/market/stats",
                     data=json.dumps({"srcCurrency":"usdt,btc,eth,bnb,trx,doge,ltc",
                                      "dstCurrency":"rls"}).encode(),
-                    headers={
-                        "Content-Type": "application/json",
-                        "User-Agent":   "Mozilla/5.0 (compatible; Googlebot/2.1)"
-                    }
-                )
+                    headers={"Content-Type":"application/json",
+                             "User-Agent":"Mozilla/5.0 (compatible; Googlebot/2.1)"})
                 data  = json.loads(urllib.request.urlopen(req, timeout=10).read())
                 stats = data.get("stats", {})
-
                 coins = [("usdt","🟢 تتر"),("btc","₿ بیتکوین"),("eth","⟠ اتریوم"),
                          ("bnb","⬡ بایننس"),("trx","🔺 ترون"),
                          ("doge","🐕 دوج"),("ltc","Ł لایت‌کوین")]
-
                 for code, label in coins:
                     s = stats.get(f"{code}-rls")
-                    if not s:
-                        continue
+                    if not s: continue
                     try:
                         t     = round(float(s.get("latest") or s.get("bestSell") or 0) / 10)
                         chg   = s.get("dayChange", "0")
@@ -544,14 +645,11 @@ def register(client, acc, manager):
                         success = True
                     except Exception:
                         continue
-
                 if success:
                     lines.insert(1, "منبع: نوبیتکس\n")
-
             except Exception as e:
                 print(f"[price/nobitex] {e}")
 
-            # ── Fallback: CoinGecko with IRT (Iranian Toman) ──────
             if not success:
                 url  = ("https://api.coingecko.com/api/v3/simple/price"
                         "?ids=bitcoin,ethereum,tether,binancecoin,tron,dogecoin,litecoin"
@@ -568,12 +666,11 @@ def register(client, acc, manager):
                 lines.insert(1, "منبع: CoinGecko\n")
 
             await client.send_message(event.chat_id, "\n".join(lines))
-
         except Exception as e:
             await client.send_message("me", f"❌ قیمت: {e}")
 
     # ══════════════════════════════════════════════════════════════
-    #  ساعت + تاریخ / time — Tehran tz + Jalali
+    #  ساعت + تاریخ
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True,
                pattern=r'^\.(?:ساعت|time|تاریخ|date)$'))
@@ -589,12 +686,11 @@ def register(client, acc, manager):
             jalali = "—"
         await client.send_message(event.chat_id,
             f"🕐 **{now.strftime('%H:%M:%S')}**  —  {days[now.weekday()]}\n"
-            f"📅 شمسی: {jalali}\n"
-            f"📅 میلادی: {now.strftime('%Y/%m/%d')}\n"
+            f"📅 شمسی: {jalali}\n📅 میلادی: {now.strftime('%Y/%m/%d')}\n"
             f"🌍 به وقت تهران")
 
     # ══════════════════════════════════════════════════════════════
-    #  بینگ / ping
+    #  بینگ
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:پینگ|ping)$'))
     async def _ping(event):
@@ -604,7 +700,7 @@ def register(client, acc, manager):
         await msg.edit(f"🏓 پینگ: **{ms}ms**")
 
     # ══════════════════════════════════════════════════════════════
-    #  ماشین‌حساب / calc
+    #  ماشین‌حساب
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:حساب|calc) (.+)$'))
     async def _calc(event):
@@ -617,20 +713,20 @@ def register(client, acc, manager):
             await client.send_message("me", "❌ عبارت اشتباهه")
 
     # ══════════════════════════════════════════════════════════════
-    #  پسورد / password
+    #  پسورد
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True,
                pattern=r'^\.(?:پسورد|password)(?:\s+(\d+))?$'))
     async def _password(event):
-        n      = int(event.pattern_match.group(1) or 16)
-        n      = max(6, min(n, 64))
+        n     = int(event.pattern_match.group(1) or 16)
+        n     = max(6, min(n, 64))
         await event.delete()
-        chars  = string.ascii_letters + string.digits + "!@#$%^&*"
-        pw     = "".join(secrets.choice(chars) for _ in range(n))
+        chars = string.ascii_letters + string.digits + "!@#$%^&*"
+        pw    = "".join(secrets.choice(chars) for _ in range(n))
         await client.send_message("me", f"🔐 پسورد {n} کاراکتری:\n`{pw}`")
 
     # ══════════════════════════════════════════════════════════════
-    #  کوتاه‌کننده لینک / short url
+    #  کوتاه‌کننده لینک
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:کوتاه|short) (\S+)$'))
     async def _shorten(event):
@@ -645,7 +741,7 @@ def register(client, acc, manager):
             await client.send_message("me", f"❌ کوتاه‌کننده: {e}")
 
     # ══════════════════════════════════════════════════════════════
-    #  شانس / luck
+    #  شانس
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:شانس|luck)$'))
     async def _luck(event):
@@ -655,7 +751,7 @@ def register(client, acc, manager):
             f"🎲 شانس امروزت: **{pct}%**\n{random.choice(LUCK_MSGS)}")
 
     # ══════════════════════════════════════════════════════════════
-    #  بازی‌ها با هدف‌گذاری / dice with optional target
+    #  بازی‌ها با هدف‌گذاری
     # ══════════════════════════════════════════════════════════════
     DICE_PAT = r'^\.(' + "|".join(DICE.keys()) + r')(?:\s+(\S+))?$'
 
@@ -671,54 +767,42 @@ def register(client, acc, manager):
         target = None
         if arg:
             a = arg.strip().lower()
-            if a in ("max","بیشترین"):
-                target = maxv
-            elif a in ("777","jackpot","جکپات"):
-                target = 64
+            if a in ("max","بیشترین"):     target = maxv
+            elif a in ("777","jackpot","جکپات"): target = 64
             else:
                 try:
                     n = int(a)
-                    if 1 <= n <= maxv:
-                        target = n
-                except ValueError:
-                    pass
+                    if 1 <= n <= maxv: target = n
+                except ValueError: pass
 
         chat      = await event.get_input_chat()
         max_tries = 100 if emoji == "🎰" else 30
 
-        for attempt in range(max_tries):
+        for _ in range(max_tries):
             await client(SendMediaRequest(
                 peer=chat, media=InputMediaDice(emoticon=emoji),
-                message="", random_id=random.randint(1, 2**31)
-            ))
-            if target is None:
-                return
+                message="", random_id=random.randint(1, 2**31)))
+            if target is None: return
 
             msgs = await client.get_messages(event.chat_id, limit=1)
-            if not msgs or not msgs[0].media or not hasattr(msgs[0].media, "value"):
-                break
+            if not msgs or not msgs[0].media or not hasattr(msgs[0].media, "value"): break
             val = msgs[0].media.value
-            if val == target:
-                return
+            if val == target: return
 
             try:
                 await client.delete_messages(event.chat_id, msgs[0].id)
             except FloodWaitError as e:
-                if e.seconds <= 15:
-                    await asyncio.sleep(e.seconds)
+                if e.seconds <= 15: await asyncio.sleep(e.seconds)
                 else:
                     await client.send_message("me",
-                        f"⏳ تلگرام محدودیت گذاشته — {e.seconds}ث صبر کن")
-                    return
-            except Exception:
-                pass
+                        f"⏳ تلگرام محدودیت گذاشته — {e.seconds}ث صبر کن"); return
+            except Exception: pass
             await asyncio.sleep(0.5 if emoji != "🎰" else 0.7)
 
-        await client.send_message("me",
-            f"⚠️ بعد از {max_tries} تلاش به {target} نرسید")
+        await client.send_message("me", f"⚠️ بعد از {max_tries} تلاش به {target} نرسید")
 
     # ══════════════════════════════════════════════════════════════
-    #  اتوکلیکر
+    #  اتوکلیکر (preserved exactly from repo)
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True,
                pattern=r'^\.(?:افزودن‌کلیک|addclick) (@?\w+) (-?\d+) \| (.+)$'))
@@ -779,7 +863,7 @@ def register(client, acc, manager):
         await client.send_message("me", "\n".join(lines))
 
     # ══════════════════════════════════════════════════════════════
-    #  وضعیت / status
+    #  وضعیت
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:status|وضعیت)$'))
     async def _status(event):
@@ -801,9 +885,14 @@ def register(client, acc, manager):
         keys  = ["bold","italic","underline","strike","mono","spoiler","quote"]
         fmts  = [k for k in keys if db.get(acc.phone, f"fmt_{k}") == "1"]
         ghost = db.get(acc.phone, "ghost") == "1"
+        saver = db.get(acc.phone, "save_expiring") == "1"
+        voice = VOICE_MAP.get(
+            (db.get(acc.phone,"tts_lang","auto"), db.get(acc.phone,"tts_gender","f")),
+            "fa-IR-DilaraNeural")
         await client.send_message("me",
             f"📊 **{acc.name}**  (`{acc.phone}`)\n\n"
             f"👻 ناپدید:         {'✅' if ghost else '🔴'}\n"
+            f"🔒 ذخیره‌پیام:    {'✅' if saver else '🔴'}\n"
             f"📩 منشی:           {'✅' if db.get(acc.phone,'sec_on')=='1' else '🔴'}\n"
             f"💬 پاسخ‌خودکار:   {'✅' if db.get(acc.phone,'ar_on')=='1' else '🔴'}  ({reps})\n"
             f"👁 جاسوس‌ها:      {spies}\n"
@@ -811,10 +900,11 @@ def register(client, acc, manager):
             f"⏰ ارسال‌های فعال: {sends}\n"
             f"📌 بنرهای فعال:   {bnrs}\n"
             f"🖱 قوانین کلیک:   {clicks}\n"
+            f"🎙 صدای TTS:      `{voice}`\n"
             f"✏️ حالت‌متن:      {', '.join(fmts) or 'خاموش'}")
 
     # ══════════════════════════════════════════════════════════════
-    #  راهنما / help
+    #  راهنما
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:راهنما|help)$'))
     async def _help(event):
@@ -822,32 +912,38 @@ def register(client, acc, manager):
         await client.send_message("me",
             "📋 **دستورات Artins Self**\n\n"
             "`.پنل` ← منو اصلی\n\n"
-            "**⏰ ارسال** (چند تا همزمان در یه چت مجازه):\n"
-            "`.send میو 300`  `.stop`  `.stopall`  `.sends`\n\n"
+            "**⏰ ارسال:**\n"
+            "`.ارسال میو 300`  `.stop`  `.stopall`  `.sends`\n\n"
             "**📌 تیچی** (ریپلای روی پیام):\n"
             "`.تنظیم بنر 30`  `.تنظیم بنر 30 فور`\n"
-            "`.لیست بنر`  `.پاکسازی بنر`  `.پاکسازی کل بنر`\n\n"
+            "`.لیست بنر`  `.پاکسازی بنر`\n\n"
             "**💬 پاسخ خودکار:**\n"
-            "`.افزودن پاسخ سلام = سلام! 👋`  `.حذف پاسخ سلام`  `.لیست پاسخ`\n\n"
+            "`.افزودن پاسخ سلام = سلام! 👋`\n"
+            "`.حذف پاسخ سلام`  `.لیست پاسخ`\n\n"
             "**📩 منشی:**\n"
             "`.متن منشی مشغولم`  `.تایم منشی 120`\n\n"
             "**💣 اسپم:**\n"
             "`.اسپم 20 میو`  `.اسپم سریع 20 میو`  `.پایان اسپم`\n\n"
-            "**👻 ناپدید** (NEW):\n"
+            "**👻 ناپدید:**\n"
             "`.ghost on`  `.ghost off`\n\n"
-            "**📥 دانلودر** (NEW):\n"
-            "`.دانلود @channel`  `.پایان دانلود @channel`  `.لیست دانلود`\n\n"
-            "**👁 فضول‌پروفایل** (NEW):\n"
+            "**📥 دانلودر:**\n"
+            "`.دانلود @channel`  `.پایان دانلود`  `.لیست دانلود`\n\n"
+            "**🔒 ذخیره پیام‌های یه‌بار-دیدن:**\n"
+            "از پنل → ذخیره‌پیام فعال کن\n\n"
+            "**👁 جاسوس پروفایل:**\n"
             "`.spy @user`  `.unspy @user`  `.spylist`\n\n"
-            "**🎵 موزیک به ویس** (NEW — ریپلای روی فایل صوتی):\n"
+            "**🎵 موزیک به ویس** (ریپلای روی فایل صوتی):\n"
             "`.mv`\n\n"
-            "**🎙 ویس (TTS):**\n"
-            "`.ویس سلام`  یا ریپلای روی پیام + `.ویس`\n\n"
-            "**🤖 هوش / 🌐 ترجمه:**\n"
-            "`.هوش سوالت`  `.ترجمه Hello`\n\n"
-            "**💰 قیمت / 🕐 ساعت:**\n"
-            "`.قیمت`  `.ساعت`\n\n"
-            "**🎲 بازی‌ها** (با هدف اختیاری):\n"
+            "**🎙 ویس:**\n"
+            "`.ویس سلام`  یا ریپلای + `.ویس`\n"
+            "`.ویس‌صدا fa f`  ← تنظیم صدا (fa/en/en-gb/en-au/ar, m/f)\n"
+            "`.متن` (ریپلای روی ویس) ← تبدیل به متن\n\n"
+            "**🤖 هوش مصنوعی:**\n"
+            "`.هوش سوالت`  `.هوش نام [اسمت]`  `.هوش ریست`\n\n"
+            "**🌐 ترجمه:**  `.ترجمه Hello`\n\n"
+            "**💰 قیمت:**  `.قیمت`  (نوبیتکس + CoinGecko)\n\n"
+            "**🕐 ساعت:**  `.ساعت`  (شمسی + میلادی)\n\n"
+            "**🎲 بازی‌ها:**\n"
             "`.تاس`  `.تاس 6`  `.اسلات 777`  `.دارت`  `.بسکتبال 5`\n\n"
             "**🧰 ابزار:**\n"
             "`.حساب 5*8`  `.پسورد 20`  `.کوتاه https://...`  `.شانس`  `.پینگ`\n\n"
@@ -857,7 +953,8 @@ def register(client, acc, manager):
             "`.status` ← وضعیت کامل")
 
     # ══════════════════════════════════════════════════════════════
-    #  Incoming — auto-seen, auto-reply, secretary, downloader
+    #  Incoming — auto-seen, downloader, view-once saver,
+    #             auto-reply, secretary
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(incoming=True))
     async def _incoming(event):
@@ -871,15 +968,23 @@ def register(client, acc, manager):
             try: await event.mark_read()
             except: pass
 
-        # ── Downloader: forward any media to Saved Messages ────
         if event.media:
+            # ── 🔒 View-once / auto-expiring saver ────────────
+            if db.get(acc.phone, "save_expiring") == "1":
+                ttl = getattr(event.media, 'ttl_seconds', None)
+                if ttl:
+                    asyncio.create_task(_save_viewonce(client, event))
+
+            # ── 📥 Downloader ──────────────────────────────────
             c   = db.conn()
             row = c.execute("SELECT 1 FROM downloads WHERE phone=? AND chat_id=?",
                             (acc.phone, str(event.chat_id))).fetchone()
             c.close()
             if row:
                 try:
-                    await client.forward_messages(me.id, event.message)
+                    # FIXED: pass message ID + from_peer (not the Message object directly)
+                    await client.forward_messages("me", [event.message.id],
+                                                  from_peer=event.chat_id)
                 except Exception as e:
                     print(f"[download] {e}")
 
@@ -892,8 +997,7 @@ def register(client, acc, manager):
             c    = db.conn()
             rows = c.execute(
                 "SELECT keyword,reply FROM auto_replies WHERE phone=? AND enabled=1",
-                (acc.phone,)
-            ).fetchall()
+                (acc.phone,)).fetchall()
             c.close()
             for r in rows:
                 kw = r["keyword"].lower()
@@ -909,12 +1013,43 @@ def register(client, acc, manager):
                 await event.reply(msg)
                 acc.dm_last[event.sender_id] = now
 
+    async def _save_viewonce(client, event):
+        """Download view-once media immediately and save to Saved Messages."""
+        tmp = None
+        try:
+            sender = await event.get_sender()
+            name   = getattr(sender, 'first_name', str(event.sender_id))
+            tmp    = await client.download_media(event.message)
+            if not tmp:
+                return
+            await client.send_file(
+                "me", tmp,
+                caption=(f"🔒 **ذخیره‌شده خودکار**\n"
+                         f"از: {name}\nچت: `{event.chat_id}`"))
+        except Exception as e:
+            print(f"[viewonce] {e}")
+        finally:
+            if tmp and os.path.exists(tmp):
+                try: os.unlink(tmp)
+                except: pass
+
     # ══════════════════════════════════════════════════════════════
-    #  حالت‌متن — HTML formatting, applied to all outgoing messages
+    #  Outgoing — حالت‌متن + ghost re-assert
     # ══════════════════════════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True))
-    async def _format(event):
-        if not event.text or event.text.startswith("."): return
+    async def _outgoing(event):
+        if not event.text: return
+
+        # ── 👻 Ghost: immediately re-assert offline after any outgoing message ─
+        if db.get(acc.phone, "ghost") == "1" and not event.text.startswith("."):
+            try:
+                from telethon.tl.functions.account import UpdateStatusRequest
+                await client(UpdateStatusRequest(offline=True))
+            except Exception:
+                pass
+
+        # ── حالت‌متن ──────────────────────────────────────────
+        if event.text.startswith("."): return
         if event.id in acc.fmt_skip: return
 
         keys   = ["bold","italic","underline","strike","mono","spoiler","quote"]

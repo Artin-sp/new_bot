@@ -15,39 +15,51 @@ def _icon(phone, key):
     return "✅" if db.get(phone, key) == "1" else "☐"
 
 
-# ── Main panel ─────────────────────────────────────────────────────
+# ── Main panel ──────────────────────────────────────────────────────
 
 def kb_main(phone, name):
     return [
-        [_b("⚙️ منو اصلی",      "menu", phone),
-         _b("👤 حساب کاربری",   "acct", phone)],
-        [_b("✕  بستن پنل",      "close", phone)],
+        [_b("⚙️ منو اصلی",    "menu",  phone),
+         _b("👤 حساب کاربری", "acct",  phone)],
+        [_b("✕  بستن پنل",    "close", phone)],
     ]
 
 
 def kb_menu(phone):
     return [
-        [_b(f"{_icon(phone,'ar_on')} پاسخ‌خودکار",  "sub_ar",   phone),
-         _b(f"{_icon(phone,'sec_on')} منشی",         "sub_sec",  phone),
-         _b(f"{_icon(phone,'autoseen')} سین خودکار", "sub_seen", phone)],
+        # Row 1 — toggleable features
+        [_b(f"{_icon(phone,'ar_on')} پاسخ‌خودکار",  "sub_ar",    phone),
+         _b(f"{_icon(phone,'sec_on')} منشی",         "sub_sec",   phone),
+         _b(f"{_icon(phone,'autoseen')} سین خودکار", "sub_seen",  phone)],
+        # Row 2 — messaging
         [_b("📌 تیچی",      "sub_techy", phone),
          _b("📨 ارسال",     "sub_send",  phone),
          _b("💣 اسپم",      "sub_spam",  phone)],
+        # Row 3 — formatting / voice / AI
         [_b("✏️ حالت‌متن",  "sub_fmt",   phone),
          _b("🎙 ویس / متن", "sub_tts",   phone),
          _b("🤖 هوش مصنوعی","sub_ai",    phone)],
+        # Row 4 — tools
         [_b("🌐 ترجمه",     "sub_tr",    phone),
          _b("💰 قیمت ارز",  "sub_price", phone),
          _b("🕐 ساعت‌وتاریخ","sub_clock", phone)],
+        # Row 5 — games / clicker / misc
         [_b("🏓 بینگ",      "sub_ping",  phone),
          _b("🎲 بازی‌ها",   "sub_games", phone),
          _b("🖱 اتوکلیکر",  "sub_click", phone)],
-        [_b("🧰 ابزار دیگه","sub_tools", phone)],
+        # Row 6 — NEW features
+        [_b(f"{_icon(phone,'ghost')} 👻 ناپدید", "sub_ghost", phone),
+         _b("📥 دانلودر",                        "sub_dl",    phone),
+         _b("👁 جاسوس",                           "sub_spy",   phone)],
+        # Row 7 — NEW features cont.
+        [_b(f"{_icon(phone,'save_expiring')} 🔒 ذخیره‌پیام", "sub_saver", phone),
+         _b("🎵 موزیک→ویس",                                   "sub_mv",    phone),
+         _b("🧰 ابزار دیگه",                                   "sub_tools", phone)],
         [_b("» بازگشت", "main", phone)],
     ]
 
 
-# ── Sub-panel builders (text, keyboard) ─────────────────────────────
+# ── Sub-panel builders ─────────────────────────────────────────────
 
 def _sub_ar(phone):
     c   = db.conn()
@@ -64,8 +76,8 @@ def _sub_ar(phone):
         f"نوع تطابق: {mt_lbl}   |   تعداد: {cnt}"
     )
     kb = [
-        [_b(f"{'✅' if on=='1' else '☐'} پاسخ‌خودکار", "tog_ar", phone),
-         _b(f"نوع: {mt_lbl}", "tog_art", phone)],
+        [_b(f"{'✅' if on=='1' else '☐'} پاسخ‌خودکار", "tog_ar",  phone),
+         _b(f"نوع: {mt_lbl}",                            "tog_art", phone)],
         [_b("» بازگشت", "menu", phone)],
     ]
     return txt, kb
@@ -107,20 +119,16 @@ def _sub_send(phone):
     if rows:
         lines = [f"» ارسال زمان‌بندی — {len(rows)} فعال\n"]
         for r in rows:
-            msg_preview = r["message"][:30] + ("…" if len(r["message"]) > 30 else "")
-            lines.append(f"• چت `{r['chat_id']}` — هر {r['interval_sec']}ث\n  «{msg_preview}»")
+            prev = r["message"][:30] + ("…" if len(r["message"]) > 30 else "")
+            lines.append(f"• چت `{r['chat_id']}` — هر {r['interval_sec']}ث\n  «{prev}»")
         detail = "\n".join(lines)
     else:
         detail = "» ارسال زمان‌بندی\n\nهیچ ارسال فعالی نداری"
     txt = (
-        f"{detail}\n\n"
-        "─────────────────\n"
-        "**نحوه استفاده:**\n"
-        "توی هر چتی که میخوای بنویس:\n\n"
-        "`.ارسال [پیام] [ثانیه]`\n"
-        "مثال: `.ارسال سلام 300`\n"
-        "(هر ۳۰۰ ثانیه «سلام» میفرسته)\n\n"
-        "`.stop` یا `.پایان ارسال` ← متوقف کردن ارسال\n"
+        f"{detail}\n\n─────────────────\n"
+        "`.ارسال [پیام] [ثانیه]`  /  `.send`\n"
+        "مثال: `.ارسال سلام 300`\n\n"
+        "`.stop` ← متوقف کردن این چت\n"
         "`.stopall` ← همه ارسال‌ها\n\n"
         "💡 بعد از ری‌استارت سرور هم ادامه پیدا میکنه"
     )
@@ -163,32 +171,36 @@ def _sub_fmt(phone):
         return [_b(f"{v1} {l1}", f"tf_{k1}", phone),
                 _b(f"{v2} {l2}", f"tf_{k2}", phone)]
     txt = "» حالت‌متن\n\nهر قالبی که روشن باشه روی همه پیام خروجیت میشینه."
-    kb = [
+    kb  = [
         row("bold", "بولد", "italic", "ایتالیک"),
         row("underline", "زیرخط", "strike", "خطخورده"),
         row("mono", "تکفاصله", "spoiler", "اسپویلر"),
-        [_b(f"{'✅' if db.get(phone,'fmt_quote')=='1' else '☐'} نقل‌قول", "tf_quote", phone)],
+        [_b(f"{'✅' if db.get(phone,'fmt_quote')=='1' else '☐'} نقل‌قول",
+            "tf_quote", phone)],
         [_b("» بازگشت", "menu", phone)],
     ]
     return txt, kb
 
 
 def _sub_tts(phone):
-    has_key = bool(os.getenv("GROQ_API_KEY", ""))
-    lang    = db.get(phone, "tts_lang",   "auto")
-    gender  = db.get(phone, "tts_gender", "f")
+    lang       = db.get(phone, "tts_lang",   "auto")
+    gender     = db.get(phone, "tts_gender", "f")
     gender_lbl = "زن 👩" if gender == "f" else "مرد 👨"
     lang_names = {
-        "auto": "خودکار (تشخیص زبان)", "fa": "فارسی",
-        "en": "انگلیسی (آمریکا)", "en-gb": "انگلیسی (بریتانیا)",
-        "en-au": "انگلیسی (استرالیا)", "ar": "عربی",
+        "auto":  "خودکار (تشخیص فارسی/انگلیسی)",
+        "fa":    "فارسی",
+        "en":    "انگلیسی آمریکا",
+        "en-gb": "انگلیسی بریتانیا",
+        "en-au": "انگلیسی استرالیا",
+        "ar":    "عربی",
     }
     lang_lbl = lang_names.get(lang, lang)
+    has_key  = bool(os.getenv("GROQ_API_KEY", ""))
     txt = (
         "» ویس و تبدیل به متن\n\n"
         "`.ویس [متن]`  ← متن به ویس\n"
-        "`.ویس` (ریپلای روی پیام)  ← همون پیام رو ویس میکنه\n"
-        "`.متن` / `.totext` (ریپلای روی ویس)  ← ویس رو متن میکنه\n\n"
+        "`.ویس` (ریپلای روی پیام متنی)  ← همون پیام رو ویس میکنه\n"
+        "`.متن` (ریپلای روی ویس)  ← ویس رو متن میکنه\n\n"
         "**تنظیم صدا:**\n"
         "`.ویس‌صدا fa f`  ← فارسی / زن\n"
         "`.ویس‌صدا fa m`  ← فارسی / مرد\n"
@@ -204,22 +216,22 @@ def _sub_tts(phone):
 
 
 def _sub_ai(phone):
-    has_key  = bool(os.getenv("GROQ_API_KEY", ""))
-    status   = "✅ فعال" if has_key else "❌ نیاز به API Key"
-    ai_name  = db.get(phone, "ai_name", "—")
-    hist_raw = db.get(phone, "ai_history", "[]")
+    has_key = bool(os.getenv("GROQ_API_KEY", ""))
+    status  = "✅ فعال" if has_key else "❌ نیاز به API Key"
+    ai_name = db.get(phone, "ai_name", "—")
     try:
-        import json; hist_len = len(json.loads(hist_raw))
-    except: hist_len = 0
+        import json
+        hist_len = len(json.loads(db.get(phone, "ai_history", "[]")))
+    except Exception:
+        hist_len = 0
     txt = (
         f"» هوش مصنوعی — {status}\n"
-        "مدل: Llama 3.3 70B (Groq)\n\n"
+        "مدل: Llama 3.3 70B (Groq — رایگان)\n\n"
         "`.هوش [سوال]`  ← پرسیدن سوال\n"
-        "`.هوش نام [اسمت]`  ← ذخیره اسم\n"
+        "`.هوش نام [اسمت]`  ← ذخیره اسم برای شخصی‌سازی\n"
         "`.هوش ریست`  ← پاک کردن حافظه\n\n"
         f"👤 اسم ذخیره‌شده: {ai_name}\n"
         f"🧠 پیام‌های در حافظه: {hist_len}\n\n"
-        "💡 هر اکانت حافظه مجزا داره — اطلاعات اکانت‌ها قاطی نمیشه\n\n"
         "برای فعال‌سازی → Replit Secrets:\n"
         "کلید: `GROQ_API_KEY` — رایگان از console.groq.com"
     )
@@ -236,19 +248,20 @@ def _sub_price(phone):
         "» قیمت ارز\n\n"
         "`.قیمت`  /  `.price`\n\n"
         "منبع: نوبیتکس (صرافی ایرانی، لحظه‌ای)\n"
-        "همه قیمت‌ها به تومان — تتر، بیتکوین، اتریوم،\n"
-        "بایننس‌کوین، ترون، دوج‌کوین، لایت‌کوین"
+        "تتر، بیتکوین، اتریوم، بایننس، ترون، دوج، لایت‌کوین\n"
+        "همه به تومان + درصد تغییر ۲۴ ساعته"
     )
     return txt, [[_b("» بازگشت", "menu", phone)]]
 
 
 def _sub_clock(phone):
-    txt = "» ساعت و تاریخ\n\n`.ساعت` یا `.تاریخ`  ← ساعت + تاریخ شمسی، به وقت تهران"
+    txt = "» ساعت و تاریخ\n\n`.ساعت`  /  `.تاریخ`  ← ساعت + تاریخ شمسی، به وقت تهران"
     return txt, [[_b("» بازگشت", "menu", phone)]]
 
 
 def _sub_ping(phone):
-    return "» بینگ\n\n`.پینگ` / `.ping`  ← تست سرعت اتصال", [[_b("» بازگشت", "menu", phone)]]
+    return "» بینگ\n\n`.پینگ`  /  `.ping`  ← تست سرعت اتصال", \
+           [[_b("» بازگشت", "menu", phone)]]
 
 
 def _sub_games(phone):
@@ -273,16 +286,12 @@ def _sub_click(phone):
     c.close()
     txt = (
         f"» اتوکلیکر — قوانین فعال: {cnt}\n\n"
-        "کلیک خودکار روی دکمه‌های پیام بات‌ها (مثل claim).\n\n"
-        "اول این رو بزن (ریپلای روی پیام دکمه‌دار):\n"
-        "`.دیباگ‌دکمه`  ← متن دقیق هر دکمه رو نشون میده\n\n"
+        "اول ریپلای روی پیام دکمه‌دار:\n"
+        "`.دیباگ‌دکمه`  ← متن دقیق دکمه‌ها رو نشون میده\n\n"
         "بعد قانون بساز:\n"
         "`.افزودن‌کلیک @BotName 0 | Claim`\n"
         "(۰ = نامحدود، عددی بالاتر = همون تعداد دفعه)\n\n"
-        "`.لیست‌کلیک`  `.حذف‌کلیک [شماره]`\n\n"
-        "نکته: دکمه‌ها فقط متن ساده دارن، ایموجی پرمیوم/سفارشی\n"
-        "روی دکمه وجود نداره — چیزی که می‌بینی همون متن واقعیه که\n"
-        "`.دیباگ‌دکمه` نشونت میده."
+        "`.لیست‌کلیک`  `.حذف‌کلیک [شماره]`"
     )
     return txt, [[_b("» بازگشت", "menu", phone)]]
 
@@ -290,33 +299,148 @@ def _sub_click(phone):
 def _sub_tools(phone):
     txt = (
         "» ابزار دیگه\n\n"
-        "`.حساب [عبارت]`  /  `.calc`  ← مثال: `.حساب 5*8+2`\n"
-        "`.پسورد [طول]`  /  `.password`  ← پسورد تصادفی (به Saved Messages)\n"
-        "`.کوتاه [لینک]`  /  `.short`  ← کوتاه‌کننده لینک\n"
-        "`.شانس`  /  `.luck`  ← شانس امروزت (فقط برای سرگرمی)"
+        "`.حساب [عبارت]`  /  `.calc`\n"
+        "`.پسورد [طول]`  /  `.password`\n"
+        "`.کوتاه [لینک]`  /  `.short`\n"
+        "`.شانس`  /  `.luck`"
     )
     return txt, [[_b("» بازگشت", "menu", phone)]]
 
+
+# ── NEW: Ghost mode ─────────────────────────────────────────────────
+
+def _sub_ghost(phone):
+    on  = db.get(phone, "ghost")
+    txt = (
+        "» حالت ناپدید 👻\n\n"
+        "هر ۳ ثانیه status آفلاین میفرسته\n"
+        "همچنین بعد از هر پیام خروجی هم بلافاصله آفلاین ست میشه\n"
+        "با این کار عملاً آنلاین نمیافتی حتی وقتی فعال هستی\n\n"
+        f"وضعیت: {'✅ روشن' if on=='1' else '🔴 خاموش'}"
+    )
+    kb = [
+        [_b(f"{'✅' if on=='1' else '☐'} حالت ناپدید", "tog_ghost", phone)],
+        [_b("» بازگشت", "menu", phone)],
+    ]
+    return txt, kb
+
+
+# ── NEW: Downloader ─────────────────────────────────────────────────
+
+def _sub_dl(phone):
+    c    = db.conn()
+    rows = c.execute("SELECT * FROM downloads WHERE phone=?", (phone,)).fetchall()
+    c.close()
+    if rows:
+        items = "\n".join(f"• {r['chat_title'] or r['chat_id']} (`{r['chat_id']}`)"
+                         for r in rows)
+        header = f"» دانلودر — {len(rows)} فعال\n\n{items}\n\n"
+    else:
+        header = "» دانلودر\n\nهیچ دانلودری فعال نیست\n\n"
+    txt = (
+        f"{header}"
+        "هر مدیایی که توی چت مشخص شده بیاد\nبه Saved Messages فوروارد میشه\n\n"
+        "`.دانلود @channel`  ← شروع\n"
+        "`.پایان دانلود @channel`  ← توقف\n"
+        "`.لیست دانلود`  ← لیست فعال"
+    )
+    return txt, [[_b("» بازگشت", "menu", phone)]]
+
+
+# ── NEW: Profile spy ───────────────────────────────────────────────
+
+def _sub_spy(phone):
+    c    = db.conn()
+    rows = c.execute("SELECT * FROM profile_spy WHERE phone=?", (phone,)).fetchall()
+    c.close()
+    if rows:
+        items = "\n".join(
+            f"• {r['name'] or '—'}  (@{r['username'] or '—'})"
+            for r in rows
+        )
+        header = f"» جاسوس پروفایل — {len(rows)} نفر زیر نظر\n\n{items}\n\n"
+    else:
+        header = "» جاسوس پروفایل\n\nهیچ‌کسی زیر نظر نیست\n\n"
+    txt = (
+        f"{header}"
+        "هر ۵ دقیقه چک میشه\n"
+        "اگه نام، یوزرنیم، عکس، یا بیو تغییر کنه بهت خبر میده\n\n"
+        "`.spy @user`  ← شروع جاسوسی\n"
+        "`.unspy @user`  ← توقف\n"
+        "`.spylist`  ← لیست"
+    )
+    return txt, [[_b("» بازگشت", "menu", phone)]]
+
+
+# ── NEW: Music to voice ────────────────────────────────────────────
+
+def _sub_mv(phone):
+    txt = (
+        "» موزیک به ویس 🎵\n\n"
+        "روی هر فایل صوتی/موزیک ریپلای کن و بنویس:\n"
+        "`.mv`  /  `.موزیک ویس`\n\n"
+        "فایل دانلود میشه و به عنوان ویس نوت فرستاده میشه\n"
+        "همه فرمت‌ها قبول میشه (MP3, AAC, M4A, OGG, ...)"
+    )
+    return txt, [[_b("» بازگشت", "menu", phone)]]
+
+
+# ── NEW: View-once / auto-expiring saver ─────────────────────────────
+
+def _sub_saver(phone):
+    on  = db.get(phone, "save_expiring")
+    txt = (
+        "» ذخیره پیام‌های خودکار-حذف 🔒\n\n"
+        "وقتی کسی بهت عکس یا ویدیو «یه‌بار-دیدن» میفرسته،\n"
+        "قبل از اینکه حذف بشه دانلود و به Saved Messages میفرسته\n\n"
+        f"وضعیت: {'✅ روشن' if on=='1' else '🔴 خاموش'}\n\n"
+        "⚠️ فقط در پیام‌های خصوصی (PV) کار میکنه\n"
+        "تلگرام ممکنه دانلود بعضی view-once ها رو بلاک کنه"
+    )
+    kb = [
+        [_b(f"{'✅' if on=='1' else '☐'} ذخیره خودکار", "tog_saver", phone)],
+        [_b("» بازگشت", "menu", phone)],
+    ]
+    return txt, kb
+
+
+# ── Account info ────────────────────────────────────────────────────
 
 def _acct(phone, acc):
     name  = acc.name if acc else phone
     uname = f"@{acc.username}" if acc and acc.username else "—"
     c     = db.conn()
-    bnrs   = c.execute("SELECT COUNT(*) n FROM banners WHERE phone=? AND active=1",(phone,)).fetchone()["n"]
-    reps   = c.execute("SELECT COUNT(*) n FROM auto_replies WHERE phone=? AND enabled=1",(phone,)).fetchone()["n"]
-    sends  = c.execute("SELECT COUNT(*) n FROM sends WHERE phone=? AND active=1",(phone,)).fetchone()["n"]
-    clicks = c.execute("SELECT COUNT(*) n FROM click_rules WHERE phone=? AND active=1",(phone,)).fetchone()["n"]
+    bnrs   = c.execute("SELECT COUNT(*) n FROM banners WHERE phone=? AND active=1",
+                       (phone,)).fetchone()["n"]
+    reps   = c.execute("SELECT COUNT(*) n FROM auto_replies WHERE phone=? AND enabled=1",
+                       (phone,)).fetchone()["n"]
+    sends  = c.execute("SELECT COUNT(*) n FROM sends WHERE phone=? AND active=1",
+                       (phone,)).fetchone()["n"]
+    clicks = c.execute("SELECT COUNT(*) n FROM click_rules WHERE phone=? AND active=1",
+                       (phone,)).fetchone()["n"]
+    spies  = c.execute("SELECT COUNT(*) n FROM profile_spy WHERE phone=?",
+                       (phone,)).fetchone()["n"]
+    dls    = c.execute("SELECT COUNT(*) n FROM downloads WHERE phone=?",
+                       (phone,)).fetchone()["n"]
     c.close()
+    ghost = db.get(phone, "ghost") == "1"
+    saver = db.get(phone, "save_expiring") == "1"
     txt = (
         f"» حساب کاربری\n\n"
         f"نام: {name}\nیوزرنیم: {uname}\nشماره: {phone}\n\n"
-        f"ارسال‌های فعال: {sends}\nبنرهای فعال: {bnrs}\n"
-        f"پاسخ‌های خودکار: {reps}\nقوانین کلیک: {clicks}"
+        f"👻 ناپدید:          {'✅' if ghost else '🔴'}\n"
+        f"🔒 ذخیره‌پیام:     {'✅' if saver else '🔴'}\n"
+        f"ارسال‌های فعال:   {sends}\n"
+        f"بنرهای فعال:      {bnrs}\n"
+        f"پاسخ‌های خودکار: {reps}\n"
+        f"قوانین کلیک:      {clicks}\n"
+        f"جاسوس‌ها:         {spies}\n"
+        f"دانلودرها:        {dls}"
     )
     return txt, [[_b("» بازگشت", "main", phone)]]
 
 
-# ── Open panel in chat ─────────────────────────────────────────────
+# ── Open panel ─────────────────────────────────────────────────────
 
 async def open_panel(chat_id: int, phone: str, manager) -> bool:
     if not bot:
@@ -338,7 +462,7 @@ async def open_panel(chat_id: int, phone: str, manager) -> bool:
     return False
 
 
-# ── Callback handler — SECURITY: only the account owner may click ──
+# ── Callback handler ────────────────────────────────────────────────
 
 def register_callbacks(manager):
 
@@ -352,30 +476,24 @@ def register_callbacks(manager):
         phone = _dec(enc)
         acc   = manager.accs.get(phone)
 
-        # ── Ownership check ──────────────────────────────────────
-        # Only the Telegram user who actually owns this userbot account
-        # (acc.user_id, set at login) may interact with its panel. Anyone
-        # else clicking — e.g. another member of the same group — gets a
-        # silent rejection instead of being able to change settings.
+        # Security: only the account owner may interact with their panel
         if acc is None:
-            await event.answer("⚠️ این حساب دیگه متصل نیست", alert=True)
-            return
+            await event.answer("⚠️ این حساب دیگه متصل نیست", alert=True); return
         if acc.user_id is not None and event.sender_id != acc.user_id:
-            await event.answer("🔒 این پنل برای شما نیست", alert=True)
-            return
+            await event.answer("🔒 این پنل برای شما نیست", alert=True); return
 
         async def show(txt, kb):
             try:    await event.edit(txt, buttons=kb)
             except Exception as e: print(f"[cb] {e}")
 
-        name = acc.name
-
-        if   action == "main":  await show("Artins self", kb_main(phone, name))
+        # Navigation
+        if   action == "main":  await show("Artins self", kb_main(phone, acc.name))
         elif action == "menu":  await show("Artins self", kb_menu(phone))
         elif action == "close": await event.delete()
         elif action == "acct":
             t, kb = _acct(phone, acc); await show(t, kb)
 
+        # Existing sub-panels
         elif action == "sub_ar":    t, kb = _sub_ar(phone);    await show(t, kb)
         elif action == "sub_sec":   t, kb = _sub_sec(phone);   await show(t, kb)
         elif action == "sub_seen":  t, kb = _sub_seen(phone);  await show(t, kb)
@@ -393,6 +511,14 @@ def register_callbacks(manager):
         elif action == "sub_click": t, kb = _sub_click(phone); await show(t, kb)
         elif action == "sub_tools": t, kb = _sub_tools(phone); await show(t, kb)
 
+        # NEW sub-panels
+        elif action == "sub_ghost": t, kb = _sub_ghost(phone); await show(t, kb)
+        elif action == "sub_dl":    t, kb = _sub_dl(phone);    await show(t, kb)
+        elif action == "sub_spy":   t, kb = _sub_spy(phone);   await show(t, kb)
+        elif action == "sub_mv":    t, kb = _sub_mv(phone);    await show(t, kb)
+        elif action == "sub_saver": t, kb = _sub_saver(phone); await show(t, kb)
+
+        # Existing toggles
         elif action == "tog_ar":
             db.toggle(phone, "ar_on");    t, kb = _sub_ar(phone);   await show(t, kb)
         elif action == "tog_art":
@@ -406,6 +532,19 @@ def register_callbacks(manager):
         elif action.startswith("tf_"):
             db.toggle(phone, f"fmt_{action[3:]}")
             t, kb = _sub_fmt(phone); await show(t, kb)
+
+        # NEW toggles
+        elif action == "tog_ghost":
+            # Actually start/stop the ghost task — not just a DB toggle
+            if db.get(phone, "ghost") == "1":
+                await manager.stop_ghost(acc)
+            else:
+                await manager.start_ghost(acc)
+            t, kb = _sub_ghost(phone); await show(t, kb)
+
+        elif action == "tog_saver":
+            db.toggle(phone, "save_expiring")
+            t, kb = _sub_saver(phone); await show(t, kb)
 
         else:
             await event.answer()

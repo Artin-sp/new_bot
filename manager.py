@@ -1,5 +1,6 @@
 import asyncio, os
 from telethon import TelegramClient
+from telethon.errors import FloodWaitError
 import db
 
 API_ID   = int(os.getenv("API_ID", "0"))
@@ -24,7 +25,7 @@ class Manager:
         self.accs:     dict[str, Acc] = {}
         self._pending: dict           = {}
 
-    # ── Startup ──────────────────────────────────────────────────────
+    # ── Startup ──────────────────────────────────────────────────
     async def load(self):
         c = db.conn()
         rows = c.execute("SELECT phone FROM accounts WHERE active=1").fetchall()
@@ -59,8 +60,8 @@ class Manager:
         try:
             import autoclicker
             autoclicker.register(client, acc, self)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[autoclicker] {e}")
 
         asyncio.create_task(client.run_until_disconnected())
 
@@ -74,14 +75,11 @@ class Manager:
         c = db.conn()
         c.execute(
             "INSERT OR REPLACE INTO accounts(phone,name,username) VALUES(?,?,?)",
-            (phone, acc.name, acc.username)
-        )
+            (phone, acc.name, acc.username))
         c.commit(); c.close()
         return acc
 
-    # ── Banners (تیچی) ─────────────────────────────────────────────
-    # BUG WAS: forward_messages(chat_id, msg_id, source_chat)
-    # FIX:     forward_messages(chat_id, msg_id, from_peer=source_chat)
+    # ── Banners (تیچی) — fixed from_peer ─────────────────────────
     async def _restore_banners(self, acc: Acc):
         c = db.conn()
         rows = c.execute(
@@ -91,8 +89,7 @@ class Manager:
         for r in rows:
             t = asyncio.create_task(self._banner_loop(
                 acc, r["chat_id"], r["source_chat"],
-                r["msg_id"], r["interval_sec"], r["mode"]
-            ))
+                r["msg_id"], r["interval_sec"], r["mode"]))
             acc.tasks[f"banner:{r['id']}"] = t
 
     async def _banner_loop(self, acc, chat_id, source_chat, msg_id, interval, mode):
@@ -100,18 +97,14 @@ class Manager:
             try:
                 if mode == "fwd":
                     await acc.client.forward_messages(
-                        int(chat_id),
-                        msg_id,
-                        from_peer=int(source_chat)   # ← FIXED
-                    )
+                        int(chat_id), msg_id,
+                        from_peer=int(source_chat))          # ← FIXED keyword arg
                 else:
                     msg = await acc.client.get_messages(int(source_chat), ids=msg_id)
                     if msg:
                         await acc.client.send_message(
-                            int(chat_id),
-                            msg.text or "",
-                            file=msg.media if msg.media else None
-                        )
+                            int(chat_id), msg.text or "",
+                            file=msg.media if msg.media else None)
             except Exception as e:
                 print(f"[banner] {e}")
             await asyncio.sleep(interval)
@@ -121,12 +114,10 @@ class Manager:
         c.execute(
             "INSERT INTO banners(phone,chat_id,source_chat,msg_id,interval_sec,mode)"
             " VALUES(?,?,?,?,?,?)",
-            (acc.phone, str(chat_id), str(source_chat), msg_id, interval, mode)
-        )
+            (acc.phone, str(chat_id), str(source_chat), msg_id, interval, mode))
         row_id = c.lastrowid; c.commit(); c.close()
         t = asyncio.create_task(
-            self._banner_loop(acc, str(chat_id), str(source_chat), msg_id, interval, mode)
-        )
+            self._banner_loop(acc, str(chat_id), str(source_chat), msg_id, interval, mode))
         acc.tasks[f"banner:{row_id}"] = t
 
     async def clear_banners(self, acc, chat_id=None):
@@ -134,8 +125,7 @@ class Manager:
         if chat_id:
             rows = c.execute(
                 "SELECT id FROM banners WHERE phone=? AND chat_id=? AND active=1",
-                (acc.phone, str(chat_id))
-            ).fetchall()
+                (acc.phone, str(chat_id))).fetchall()
             c.execute("UPDATE banners SET active=0 WHERE phone=? AND chat_id=?",
                       (acc.phone, str(chat_id)))
         else:
@@ -149,10 +139,7 @@ class Manager:
             if key in acc.tasks:
                 acc.tasks[key].cancel(); del acc.tasks[key]
 
-    # ── Scheduled sends (.send) ─────────────────────────────────────
-    # BUG WAS: one task per chat_id, each new .send wiped the old one
-    # FIX:     unique key per send = "text:{chat_id}:{db_id}"
-    #          multiple sends CAN run in the same chat simultaneously
+    # ── Sends — unique key per send (multiple per chat) ───────────
     async def _restore_sends(self, acc: Acc):
         c = db.conn()
         rows = c.execute(
@@ -161,9 +148,8 @@ class Manager:
         c.close()
         for r in rows:
             t = asyncio.create_task(
-                self._send_loop(acc, r["id"], r["chat_id"], r["message"], r["interval_sec"])
-            )
-            acc.tasks[f"text:{r['chat_id']}:{r['id']}"] = t  # ← unique key
+                self._send_loop(acc, r["id"], r["chat_id"], r["message"], r["interval_sec"]))
+            acc.tasks[f"text:{r['chat_id']}:{r['id']}"] = t   # unique key
 
     async def _send_loop(self, acc, db_id, chat_id, text, secs):
         while True:
@@ -179,19 +165,16 @@ class Manager:
             await asyncio.sleep(secs)
 
     async def start_send(self, acc, chat_id: str, text: str, secs: int) -> int:
-        # FIXED: no longer calls stop_send — just adds alongside any existing ones
         c = db.conn()
         c.execute(
             "INSERT INTO sends(phone,chat_id,message,interval_sec) VALUES(?,?,?,?)",
-            (acc.phone, str(chat_id), text, secs)
-        )
+            (acc.phone, str(chat_id), text, secs))
         row_id = c.lastrowid; c.commit(); c.close()
         t = asyncio.create_task(self._send_loop(acc, row_id, str(chat_id), text, secs))
         acc.tasks[f"text:{chat_id}:{row_id}"] = t
         return row_id
 
     async def stop_send(self, acc, chat_id: str):
-        # Stops ALL sends for this chat
         keys = [k for k in list(acc.tasks) if k.startswith(f"text:{chat_id}:")]
         for k in keys:
             acc.tasks[k].cancel(); del acc.tasks[k]
@@ -208,19 +191,24 @@ class Manager:
         c.execute("UPDATE sends SET active=0 WHERE phone=?", (acc.phone,))
         c.commit(); c.close()
 
-    # ── Ghost mode (حالت ناپدید) ─────────────────────────────────────
+    # ── Ghost mode — FIXED: 3s interval, import before loop ───────
     async def _restore_ghost(self, acc: Acc):
         if db.get(acc.phone, "ghost") == "1":
             acc.tasks["ghost"] = asyncio.create_task(self._ghost_loop(acc))
 
     async def _ghost_loop(self, acc: Acc):
+        # Import ONCE before the loop — not inside it
         from telethon.tl.functions.account import UpdateStatusRequest
-        while db.get(acc.phone, "ghost") == "1":
+        while True:
+            if db.get(acc.phone, "ghost") != "1":
+                break
             try:
                 await acc.client(UpdateStatusRequest(offline=True))
-            except Exception:
-                pass
-            await asyncio.sleep(5)
+            except FloodWaitError as e:
+                await asyncio.sleep(min(e.seconds, 30))
+            except Exception as e:
+                print(f"[ghost] {e}")
+            await asyncio.sleep(3)   # 3s instead of 5s
 
     async def start_ghost(self, acc: Acc):
         db.put(acc.phone, "ghost", "1")
@@ -239,10 +227,10 @@ class Manager:
         except Exception:
             pass
 
-    # ── Profile spy (فضول‌پروفایل) ──────────────────────────────────
+    # ── Profile spy loop (every 5 min) ───────────────────────────
     async def _spy_loop(self, acc: Acc):
         while True:
-            await asyncio.sleep(300)   # check every 5 minutes
+            await asyncio.sleep(300)
             c = db.conn()
             rows = c.execute(
                 "SELECT * FROM profile_spy WHERE phone=?", (acc.phone,)
@@ -291,7 +279,8 @@ class Manager:
             full    = await acc.client(GetFullUserRequest(entity))
             cur_bio = getattr(full.full_user, "about", "") or ""
             if cur_bio != r["bio"]:
-                changes.append(f"بیو تغییر کرد ✏️\nقبلاً: `{r['bio'] or '—'}`\nالان: `{cur_bio or '—'}`")
+                changes.append(
+                    f"بیو تغییر کرد ✏️\nقبلاً: `{r['bio'] or '—'}`\nالان: `{cur_bio or '—'}`")
                 c = db.conn()
                 c.execute("UPDATE profile_spy SET bio=? WHERE phone=? AND user_id=?",
                           (cur_bio, acc.phone, r["user_id"]))
@@ -303,22 +292,17 @@ class Manager:
             label = cur_name or f"@{cur_uname}"
             await acc.client.send_message(
                 "me",
-                f"👁 **پروفایل {label} تغییر کرد:**\n\n" + "\n".join(changes)
-            )
+                f"👁 **پروفایل {label} تغییر کرد:**\n\n" + "\n".join(changes))
 
-    # ── Login — hash saved to DB so Replit restart won't break it ───
+    # ── Login — hash persisted to DB (survives Replit restart) ────
     async def begin_login(self, phone: str):
         if phone in self.accs:
             raise Exception("این حساب از قبل متصله")
-
         path   = f"sessions/{phone.replace('+', '')}"
         client = TelegramClient(path, API_ID, API_HASH)
         await client.connect()
         res = await client.send_code_request(phone)
-
         self._pending[phone] = {"client": client, "hash": res.phone_code_hash}
-
-        # Persist so a Replit restart between "send code" and "verify" doesn't lose it
         c = db.conn()
         c.execute("INSERT OR REPLACE INTO pending_logins(phone,hash) VALUES(?,?)",
                   (phone, res.phone_code_hash))
@@ -326,17 +310,17 @@ class Manager:
 
     async def finish_login(self, phone: str, code: str, pw: str = "") -> Acc:
         p = self._pending.get(phone)
-
         if not p:
-            # Memory was cleared (Replit restart) — recover from DB
+            # Replit restarted — recover hash from DB
             c = db.conn()
-            row = c.execute("SELECT hash FROM pending_logins WHERE phone=?", (phone,)).fetchone()
+            row = c.execute(
+                "SELECT hash FROM pending_logins WHERE phone=?", (phone,)
+            ).fetchone()
             c.close()
             if not row:
                 raise Exception(
                     "کد منقضی شد یا قبلاً استفاده شده\n"
-                    "دوباره روی «Request Code» کلیک کن"
-                )
+                    "دوباره روی «Request Code» کلیک کن")
             path   = f"sessions/{phone.replace('+', '')}"
             client = TelegramClient(path, API_ID, API_HASH)
             await client.connect()
@@ -361,7 +345,6 @@ class Manager:
         c = db.conn()
         c.execute("DELETE FROM pending_logins WHERE phone=?", (phone,))
         c.commit(); c.close()
-
         await p["client"].disconnect()
         return await self.connect(phone)
 
@@ -389,7 +372,6 @@ class Manager:
         out  = []
         for a in accs:
             ph    = a["phone"]
-            state = self.accs.get(ph)
             bnrs  = c.execute("SELECT COUNT(*) n FROM banners WHERE phone=? AND active=1",
                               (ph,)).fetchone()["n"]
             reps  = c.execute("SELECT COUNT(*) n FROM auto_replies WHERE phone=? AND enabled=1",
@@ -399,7 +381,6 @@ class Manager:
             out.append({
                 "phone": ph, "name": a["name"], "username": a["username"],
                 "connected": ph in self.accs, "active": bool(a["active"]),
-                "banners": bnrs, "replies": reps, "sends": sends
-            })
+                "banners": bnrs, "replies": reps, "sends": sends})
         c.close()
         return out
