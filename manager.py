@@ -154,17 +154,31 @@ class Manager:
 
     # ── Sends — unique key per send (multiple per chat) ───────────
     async def _restore_sends(self, acc: Acc):
+        import time
         c = db.conn()
         rows = c.execute(
             "SELECT * FROM sends WHERE phone=? AND active=1", (acc.phone,)
         ).fetchall()
         c.close()
         for r in rows:
+            # Calculate how long to wait before the first send based on last_sent.
+            # If last_sent is known, wait out the remainder of the interval.
+            # If unknown (never sent), fire immediately.
+            last_sent = r["last_sent"]
+            if last_sent:
+                elapsed = time.time() - last_sent
+                initial_delay = max(0, r["interval_sec"] - elapsed)
+            else:
+                initial_delay = 0
             t = asyncio.create_task(
-                self._send_loop(acc, r["id"], r["chat_id"], r["message"], r["interval_sec"]))
+                self._send_loop(acc, r["id"], r["chat_id"], r["message"],
+                                r["interval_sec"], initial_delay=initial_delay))
             acc.tasks[f"text:{r['chat_id']}:{r['id']}"] = t   # unique key
 
-    async def _send_loop(self, acc, db_id, chat_id, text, secs):
+    async def _send_loop(self, acc, db_id, chat_id, text, secs, initial_delay=0):
+        import time
+        if initial_delay > 0:
+            await asyncio.sleep(initial_delay)
         while True:
             c = db.conn()
             row = c.execute("SELECT active FROM sends WHERE id=?", (db_id,)).fetchone()
@@ -173,6 +187,10 @@ class Manager:
                 break
             try:
                 await acc.client.send_message(int(chat_id), text)
+                # Record send time so restores can calculate remaining interval
+                c2 = db.conn()
+                c2.execute("UPDATE sends SET last_sent=? WHERE id=?", (int(time.time()), db_id))
+                c2.commit(); c2.close()
             except Exception as e:
                 print(f"[send] {e}")
             await asyncio.sleep(secs)
