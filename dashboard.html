@@ -217,6 +217,7 @@ async function loadFilterBar() {
   _allAccounts = (await res.json()).filter(a => a.connected);
   const bar  = document.getElementById('filter-bar');
   const btns = document.getElementById('filter-btns');
+  _fillPhoneSelects();
   if (_allAccounts.length <= 1) { bar.style.display = 'none'; return; }
   bar.style.display = 'flex';
   btns.innerHTML = `<button class="filter-btn active" data-phone="" onclick="setFilter('')">All</button>` +
@@ -758,7 +759,9 @@ async function pushToGithub() {
 
 // Init
 loadAccounts();
+loadFilterBar();
 setInterval(loadAccounts, 15000);
+setInterval(loadFilterBar, 15000);
 </script>
 </body>
 </html>
