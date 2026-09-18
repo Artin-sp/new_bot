@@ -55,6 +55,8 @@ def kb_menu(phone):
         [_b(f"{_icon(phone,'save_expiring')} 🔒 ذخیره‌پیام", "sub_saver", phone),
          _b("🎵 موزیک→ویس",                                   "sub_mv",    phone),
          _b("🧰 ابزار دیگه",                                   "sub_tools", phone)],
+        # Row 8 — management
+        [_b("🛡️ مدیریت گروه", "sub_mgmt", phone)],
         [_b("» بازگشت", "main", phone)],
     ]
 
@@ -406,6 +408,34 @@ def _sub_saver(phone):
 
 # ── Account info ────────────────────────────────────────────────────
 
+def _sub_mgmt(phone):
+    txt = (
+        "» مدیریت گروه 🛡️\n\n"
+        "همه دستورات روی ریپلای یا با @یوزرنیم کار میکنن:\n\n"
+        "**بن / محدودیت:**\n"
+        "`.بن @user [دلیل]`  ←  بن دائمی\n"
+        "`.آن‌بن @user`  ←  آن‌بن\n"
+        "`.کیک @user`  ←  اخراج از گروه\n"
+        "`.میوت @user [دقیقه]`  ←  میوت\n"
+        "`.آن‌میوت @user`  ←  آن‌میوت\n\n"
+        "**پیام:**\n"
+        "`.پین`  ←  ریپلای روی پیام → پین\n"
+        "`.آن‌پین`  ←  برداشتن پین\n"
+        "`.پاک [تعداد]`  ←  حذف N پیام آخر\n"
+        "`.هشدار @user [دلیل]`  ←  ارسال هشدار\n\n"
+        "**ادمین:**\n"
+        "`.پروموت @user [عنوان]`  ←  ادمین کردن\n"
+        "`.دموت @user`  ←  برداشتن ادمین\n"
+        "`.ادمین‌ها`  ←  لیست ادمین‌ها\n"
+        "`.اعضا`  ←  تعداد اعضا\n\n"
+        "**فورس جوین:**\n"
+        "`.فورس @user @channel`\n"
+        "یا ریپلای روی پیام یوزر + `.فورس @channel`\n"
+        "(DM میفرسته و میگه باید عضو بشه)"
+    )
+    return txt, [[_b("» بازگشت", "menu", phone)]]
+
+
 def _acct(phone, acc):
     name  = acc.name if acc else phone
     uname = f"@{acc.username}" if acc and acc.username else "—"
@@ -517,6 +547,7 @@ def register_callbacks(manager):
         elif action == "sub_spy":   t, kb = _sub_spy(phone);   await show(t, kb)
         elif action == "sub_mv":    t, kb = _sub_mv(phone);    await show(t, kb)
         elif action == "sub_saver": t, kb = _sub_saver(phone); await show(t, kb)
+        elif action == "sub_mgmt":  t, kb = _sub_mgmt(phone);  await show(t, kb)
 
         # Existing toggles
         elif action == "tog_ar":

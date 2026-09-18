@@ -958,7 +958,23 @@ def register(client, acc, manager):
             "**🖱 اتوکلیکر:**\n"
             "`.دیباگ‌دکمه` (ریپلای)  `.افزودن‌کلیک @Bot 0 | Claim`\n"
             "`.لیست‌کلیک`  `.حذف‌کلیک 1`\n\n"
-            "`.status` ← وضعیت کامل")
+            "`.status` ← وضعیت کامل\n\n"
+            "**🛡️ مدیریت گروه** (فقط وقتی ادمین هستی):\n"
+            "`.بن @user [دلیل]`  ←  بن دائمی\n"
+            "`.آن‌بن @user`  ←  آن‌بن\n"
+            "`.کیک @user`  ←  اخراج\n"
+            "`.میوت @user [دقیقه]`  ←  میوت (بدون دقیقه=ابدی)\n"
+            "`.آن‌میوت @user`  ←  آن‌میوت\n"
+            "`.پین`  ←  ریپلای روی پیام + پین\n"
+            "`.آن‌پین`  ←  برداشتن پین\n"
+            "`.پاک 50`  ←  حذف ۵۰ پیام آخر\n"
+            "`.پروموت @user [عنوان]`  ←  ادمین کردن\n"
+            "`.دموت @user`  ←  برداشتن ادمین\n"
+            "`.ادمین‌ها`  ←  لیست ادمین‌ها\n"
+            "`.اعضا`  ←  تعداد اعضا\n"
+            "`.هشدار @user [دلیل]`  ←  هشدار\n"
+            "`.فورس @user @channel`  ←  DM برای جوین\n"
+            "(همه این دستورات روی ریپلای هم کار میکنن)")
 
     # ══════════════════════════════════════════════════════════════
     #  Incoming — auto-seen, downloader, view-once saver,
@@ -1040,6 +1056,276 @@ def register(client, acc, manager):
             if tmp and os.path.exists(tmp):
                 try: os.unlink(tmp)
                 except: pass
+
+    # ══════════════════════════════════════════════════════════════
+    #  🛡️ مدیریت گروه — فقط وقتی ادمین هستی کار میکنه
+    # ══════════════════════════════════════════════════════════════
+    from telethon.tl.functions.channels import (
+        EditBannedRequest, EditAdminRequest,
+        GetParticipantsRequest, GetFullChannelRequest)
+    from telethon.tl.types import (
+        ChatBannedRights, ChatAdminRights,
+        ChannelParticipantsSearch)
+    from datetime import timedelta as _td
+
+    async def _resolve_target(event):
+        """Get target user from reply or argument."""
+        if event.is_reply:
+            msg = await event.get_reply_message()
+            return await client.get_entity(msg.sender_id)
+        arg = event.pattern_match.group(1).strip() if event.pattern_match.lastindex >= 1 else ""
+        if arg:
+            return await client.get_entity(arg.lstrip("@"))
+        return None
+
+    # ── بن / ban ──────────────────────────────────────────────────
+    @client.on(events.NewMessage(outgoing=True,
+               pattern=r'^\.(?:بن|ban)(?:\s+(@?\S+))?(?:\s+(.+))?$'))
+    async def _ban(event):
+        await event.delete()
+        try:
+            user = await _resolve_target(event)
+            if not user: await client.send_message("me","❌ یوزر مشخص نشده"); return
+            reason = event.pattern_match.group(2) or "بدون دلیل"
+            await client(EditBannedRequest(
+                event.chat_id, user,
+                ChatBannedRights(until_date=None, view_messages=True)))
+            name = getattr(user,"first_name","") or str(user.id)
+            await client.send_message(event.chat_id,
+                f"🚫 **{name}** بن شد\n📝 دلیل: {reason}")
+        except Exception as e:
+            await client.send_message("me", f"❌ بن: {e}")
+
+    # ── آن‌بن / unban ──────────────────────────────────────────────
+    @client.on(events.NewMessage(outgoing=True,
+               pattern=r'^\.(?:آن‌بن|آنبن|unban)(?:\s+(@?\S+))?$'))
+    async def _unban(event):
+        await event.delete()
+        try:
+            user = await _resolve_target(event)
+            if not user: await client.send_message("me","❌ یوزر مشخص نشده"); return
+            await client(EditBannedRequest(
+                event.chat_id, user, ChatBannedRights(until_date=None)))
+            name = getattr(user,"first_name","") or str(user.id)
+            await client.send_message(event.chat_id, f"✅ **{name}** آن‌بن شد")
+        except Exception as e:
+            await client.send_message("me", f"❌ آن‌بن: {e}")
+
+    # ── کیک / kick ────────────────────────────────────────────────
+    @client.on(events.NewMessage(outgoing=True,
+               pattern=r'^\.(?:کیک|kick)(?:\s+(@?\S+))?$'))
+    async def _kick(event):
+        await event.delete()
+        try:
+            user = await _resolve_target(event)
+            if not user: await client.send_message("me","❌ یوزر مشخص نشده"); return
+            # Ban then immediately unban = kick
+            await client(EditBannedRequest(
+                event.chat_id, user,
+                ChatBannedRights(until_date=None, view_messages=True)))
+            await asyncio.sleep(0.5)
+            await client(EditBannedRequest(
+                event.chat_id, user, ChatBannedRights(until_date=None)))
+            name = getattr(user,"first_name","") or str(user.id)
+            await client.send_message(event.chat_id, f"👢 **{name}** کیک شد")
+        except Exception as e:
+            await client.send_message("me", f"❌ کیک: {e}")
+
+    # ── میوت / mute ───────────────────────────────────────────────
+    @client.on(events.NewMessage(outgoing=True,
+               pattern=r'^\.(?:میوت|mute)(?:\s+(@?\S+))?(?:\s+(\d+))?$'))
+    async def _mute(event):
+        await event.delete()
+        try:
+            user = await _resolve_target(event)
+            if not user: await client.send_message("me","❌ یوزر مشخص نشده"); return
+            mins_str = event.pattern_match.group(2)
+            mins     = int(mins_str) if mins_str else 0
+            until    = None if mins == 0 else (
+                datetime.now(timezone.utc) + _td(minutes=mins))
+            await client(EditBannedRequest(
+                event.chat_id, user,
+                ChatBannedRights(
+                    until_date=until,
+                    send_messages=True, send_media=True,
+                    send_stickers=True, send_gifs=True,
+                    send_games=True, send_inline=True)))
+            name    = getattr(user,"first_name","") or str(user.id)
+            dur_txt = f"{mins} دقیقه" if mins else "ابدی"
+            await client.send_message(event.chat_id,
+                f"🔇 **{name}** میوت شد ({dur_txt})")
+        except Exception as e:
+            await client.send_message("me", f"❌ میوت: {e}")
+
+    # ── آن‌میوت / unmute ──────────────────────────────────────────
+    @client.on(events.NewMessage(outgoing=True,
+               pattern=r'^\.(?:آن‌میوت|آنمیوت|unmute)(?:\s+(@?\S+))?$'))
+    async def _unmute(event):
+        await event.delete()
+        try:
+            user = await _resolve_target(event)
+            if not user: await client.send_message("me","❌ یوزر مشخص نشده"); return
+            await client(EditBannedRequest(
+                event.chat_id, user, ChatBannedRights(until_date=None)))
+            name = getattr(user,"first_name","") or str(user.id)
+            await client.send_message(event.chat_id, f"🔊 **{name}** آن‌میوت شد")
+        except Exception as e:
+            await client.send_message("me", f"❌ آن‌میوت: {e}")
+
+    # ── پین / pin ─────────────────────────────────────────────────
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:پین|pin)$'))
+    async def _pin(event):
+        await event.delete()
+        if not event.is_reply:
+            await client.send_message("me","❌ روی پیامی ریپلای کن"); return
+        try:
+            reply = await event.get_reply_message()
+            await client.pin_message(event.chat_id, reply.id, notify=False)
+            await client.send_message(event.chat_id, "📌 پیام پین شد")
+        except Exception as e:
+            await client.send_message("me", f"❌ پین: {e}")
+
+    # ── آن‌پین / unpin ────────────────────────────────────────────
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:آن‌پین|آنپین|unpin)$'))
+    async def _unpin(event):
+        await event.delete()
+        try:
+            await client.unpin_message(event.chat_id)
+            await client.send_message(event.chat_id, "📌 پین برداشته شد")
+        except Exception as e:
+            await client.send_message("me", f"❌ آن‌پین: {e}")
+
+    # ── پاک / purge — حذف N پیام آخر ──────────────────────────────
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:پاک|purge) (\d+)$'))
+    async def _purge(event):
+        n   = min(int(event.pattern_match.group(1)), 1000)
+        cid = event.chat_id
+        await event.delete()
+        try:
+            msgs = await client.get_messages(cid, limit=n)
+            ids  = [m.id for m in msgs]
+            await client.delete_messages(cid, ids)
+            m = await client.send_message(cid, f"🗑️ {len(ids)} پیام حذف شد")
+            await asyncio.sleep(3)
+            try: await m.delete()
+            except: pass
+        except Exception as e:
+            await client.send_message("me", f"❌ پاک: {e}")
+
+    # ── پروموت / promote ──────────────────────────────────────────
+    @client.on(events.NewMessage(outgoing=True,
+               pattern=r'^\.(?:پروموت|promote)(?:\s+(@?\S+))?(?:\s+(.+))?$'))
+    async def _promote(event):
+        await event.delete()
+        try:
+            user  = await _resolve_target(event)
+            if not user: await client.send_message("me","❌ یوزر مشخص نشده"); return
+            title = event.pattern_match.group(2) or ""
+            await client(EditAdminRequest(
+                event.chat_id, user,
+                ChatAdminRights(
+                    change_info=True, post_messages=True,
+                    edit_messages=True, delete_messages=True,
+                    ban_users=True, invite_users=True,
+                    pin_messages=True, add_admins=False),
+                rank=title))
+            name = getattr(user,"first_name","") or str(user.id)
+            await client.send_message(event.chat_id,
+                f"⭐ **{name}** ادمین شد" + (f"\nعنوان: {title}" if title else ""))
+        except Exception as e:
+            await client.send_message("me", f"❌ پروموت: {e}")
+
+    # ── دموت / demote ─────────────────────────────────────────────
+    @client.on(events.NewMessage(outgoing=True,
+               pattern=r'^\.(?:دموت|demote)(?:\s+(@?\S+))?$'))
+    async def _demote(event):
+        await event.delete()
+        try:
+            user = await _resolve_target(event)
+            if not user: await client.send_message("me","❌ یوزر مشخص نشده"); return
+            await client(EditAdminRequest(
+                event.chat_id, user,
+                ChatAdminRights(), rank=""))
+            name = getattr(user,"first_name","") or str(user.id)
+            await client.send_message(event.chat_id, f"🔻 **{name}** از ادمین برداشته شد")
+        except Exception as e:
+            await client.send_message("me", f"❌ دموت: {e}")
+
+    # ── ادمین‌ها / admins ─────────────────────────────────────────
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:ادمین‌ها|admins)$'))
+    async def _admins(event):
+        await event.delete()
+        try:
+            from telethon.tl.types import ChannelParticipantsAdmins
+            result = await client(GetParticipantsRequest(
+                event.chat_id, ChannelParticipantsAdmins(), 0, 100, 0))
+            lines = [f"👑 **ادمین‌های گروه ({len(result.participants)} نفر):**\n"]
+            for p in result.participants:
+                user  = next((u for u in result.users if u.id == p.user_id), None)
+                name  = getattr(user,"first_name","?") if user else "?"
+                uname = f"@{user.username}" if user and user.username else ""
+                rank  = getattr(p,"rank","") or ""
+                lines.append(f"• {name} {uname}" + (f" — {rank}" if rank else ""))
+            await client.send_message(event.chat_id, "\n".join(lines))
+        except Exception as e:
+            await client.send_message("me", f"❌ ادمین‌ها: {e}")
+
+    # ── اعضا / members ────────────────────────────────────────────
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(?:اعضا|members)$'))
+    async def _members(event):
+        await event.delete()
+        try:
+            full = await client(GetFullChannelRequest(event.chat_id))
+            cnt  = full.full_chat.participants_count
+            await client.send_message(event.chat_id, f"👥 تعداد اعضا: **{cnt:,}**")
+        except Exception as e:
+            await client.send_message("me", f"❌ اعضا: {e}")
+
+    # ── فورس‌جوین / forcejoin ─────────────────────────────────────
+    # (یوزربات نمیتونه مستقیم کسی رو فورس کنه — DM میفرسته)
+    @client.on(events.NewMessage(outgoing=True,
+               pattern=r'^\.(?:فورس|forcejoin)(?:\s+(@?\S+))?\s+(@\S+)$'))
+    async def _forcejoin(event):
+        await event.delete()
+        try:
+            user_arg = event.pattern_match.group(1)
+            chan_arg = event.pattern_match.group(2)
+            if event.is_reply and not user_arg:
+                msg  = await event.get_reply_message()
+                user = await client.get_entity(msg.sender_id)
+            else:
+                user = await client.get_entity((user_arg or "").lstrip("@"))
+            chan   = await client.get_entity(chan_arg.lstrip("@"))
+            link   = f"https://t.me/{getattr(chan,'username','')}" if getattr(chan,'username','') \
+                     else "لینک دعوت"
+            name   = getattr(user,"first_name","") or str(user.id)
+            cname  = getattr(chan,"title","") or chan_arg
+            await client.send_message(user,
+                f"👋 سلام {name}!\n\n"
+                f"برای ادامه باید عضو **{cname}** بشی:\n{link}\n\n"
+                f"بعد از عضویت دوباره پیام بده ✅")
+            await client.send_message("me",
+                f"✅ پیام فورس‌جوین برای **{name}** فرستاده شد\nکانال: {cname}")
+        except Exception as e:
+            await client.send_message("me",
+                f"❌ فورس‌جوین: {e}\n\n"
+                f"فرمت:\n`.فورس @user @channel`\nیا ریپلای روی پیام یوزر + `.فورس @channel`")
+
+    # ── هشدار / warn ─────────────────────────────────────────────
+    @client.on(events.NewMessage(outgoing=True,
+               pattern=r'^\.(?:هشدار|warn)(?:\s+(@?\S+))?(?:\s+(.+))?$'))
+    async def _warn(event):
+        await event.delete()
+        try:
+            user   = await _resolve_target(event)
+            if not user: await client.send_message("me","❌ یوزر مشخص نشده"); return
+            reason = event.pattern_match.group(2) or "بدون دلیل"
+            name   = getattr(user,"first_name","") or str(user.id)
+            await client.send_message(event.chat_id,
+                f"⚠️ **هشدار به {name}**\n📝 دلیل: {reason}\n\n"
+                f"رعایت قوانین گروه الزامیه!")
+        except Exception as e:
+            await client.send_message("me", f"❌ هشدار: {e}")
 
     # ══════════════════════════════════════════════════════════════
     #  Outgoing — حالت‌متن + ghost re-assert

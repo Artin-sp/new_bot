@@ -85,6 +85,19 @@ def init():
         bio        TEXT DEFAULT '',
         UNIQUE(phone, user_id)
     );
+    CREATE TABLE IF NOT EXISTS msg_cache(
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        phone       TEXT NOT NULL,
+        chat_id     TEXT NOT NULL,
+        msg_id      INTEGER NOT NULL,
+        sender_id   TEXT NOT NULL,
+        sender_name TEXT DEFAULT '',
+        text        TEXT DEFAULT '',
+        has_media   INTEGER DEFAULT 0,
+        media_type  TEXT DEFAULT '',
+        created_at  REAL NOT NULL,
+        UNIQUE(phone, chat_id, msg_id)
+    );
     """)
     c.commit()
     c.close()
